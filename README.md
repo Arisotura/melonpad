@@ -36,7 +36,7 @@ helped me a lot there.
 This is fun and all, but the FPGA-based hardware mod isn't accessible to everybody out there. It's also not a permanent
 solution -- the FPGA wouldn't even fit in the gamepad's case. We do have plans to make things easier -- see the roadmap down there.
 
-I also plan to put up the code for my FLASH emulator on Github. Getting to work proved to be a challenge in itself.
+I also plan to put up the code for my FLASH emulator on Github. Getting that to work proved to be a challenge in itself.
 
 ## Currently supported
 
