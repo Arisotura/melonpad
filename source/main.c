@@ -141,6 +141,7 @@ void main()
 
 
     int frame = 0;
+    int d = 0;
 	for (;;)
 	{
 		frame++;
@@ -148,16 +149,21 @@ void main()
 
         sInputData* test = Input_Scan();
 
-        ClearRect(8+(16*8), 8+64, 8*8, 16*5);
+        ClearRect(8+(16*8), 8+64, 8*8, 16*9);
         DrawHex(8+(16*8), 8  +64, test->ButtonsDown);
         DrawHex(8+(16*8), 8*3+64, test->LeftStickX);
         DrawHex(8+(16*8), 8*5+64, test->LeftStickY);
         DrawHex(8+(16*8), 8*7+64, test->RightStickX);
         DrawHex(8+(16*8), 8*9+64, test->RightStickY);
+        DrawHex(8+(16*8), 8*11+64, test->TouchX);
+        DrawHex(8+(16*8), 8*13+64, test->TouchY);
+        DrawHex(8+(16*8), 8*15+64, test->TouchPressure);
+        DrawHex(8+(16*8), 8*17+64, test->TouchPressed);
 
 		//if (!frame)
 		if (0)
 		{
+            d = 1;
 			//u32 base = 0x003FFE00;
 			//u32 base = 0xE0010000;
 			//u32 base = 0xF00050EC;

@@ -67,18 +67,34 @@ sInputData* Input_Scan()
     for (int i = 0; i < 6; i++)
         InputData.MagnetData[i] = data[0x1E + i];
 
+    int nvalid = 0;
     int touchX = 0,  touchY = 0;
     for (int i = 0; i < 10; i++)
     {
         u16 x = data[0x24 + (i*4)] | (data[0x25 + (i*4)] << 8);
         u16 y = data[0x26 + (i*4)] | (data[0x27 + (i*4)] << 8);
 
-        touchX += (x & 0xFFF);
-        touchY += (y & 0xFFF);
+        // CHECKME: the last point doesn't have bit15 set on Y, probably a bug
+        if ((x | y) & 0x8000)
+        {
+            touchX += (x & 0xFFF);
+            touchY += (y & 0xFFF);
+            nvalid++;
+        }
     }
 
-    InputData.TouchX = derp_div(touchX, 10);
-    InputData.TouchY = derp_div(touchY, 10);
+    if (nvalid > 0)
+    {
+        InputData.TouchX = derp_div(touchX, nvalid);
+        InputData.TouchY = derp_div(touchY, nvalid);
+        InputData.TouchPressed = 1;
+    }
+    else
+    {
+        InputData.TouchX = 0;
+        InputData.TouchY = 0;
+        InputData.TouchPressed = 0;
+    }
 
     u16 press;
     press  = ((data[0x25] & 0x70) >> 4);

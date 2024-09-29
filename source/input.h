@@ -53,6 +53,7 @@ typedef struct
 
     u16 TouchX;
     u16 TouchY;
+    u8 TouchPressed;
     u16 TouchPressure;
 
 } sInputData;
