@@ -174,6 +174,8 @@ void WUP_Init()
 
     GFX_Init();
     LCD_Init();
+
+    Input_Init();
 }
 
 

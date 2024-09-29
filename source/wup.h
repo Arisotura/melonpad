@@ -11,6 +11,8 @@
 #include "lcd.h"
 #include "gfx.h"
 
+#include "input.h"
+
 void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);

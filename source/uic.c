@@ -40,6 +40,7 @@ void UIC_Init()
     if (UICState == 11)
     {
         UIC_SetState(3);
+        DisableIRQ();
         for (;;);
     }
 }
@@ -196,7 +197,14 @@ int UIC_SetState(u8 state)
     if (!StateTransitions[UICState][state]) return 0;
 
     UIC_SendCommand(0x01, &state, 1, NULL, 0);
+    UICState = state;
     return 1;
+}
+
+
+void UIC_GetInputData(u8* data)
+{
+    UIC_SendCommand(0x07, NULL, 0, data, 128);
 }
 
 

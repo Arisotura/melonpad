@@ -11,7 +11,10 @@ u32 UIC_GetFirmwareVersion();
 u8 UIC_GetState();
 int UIC_SetState(u8 state);
 
+void UIC_GetInputData(u8* data);
+
 void UIC_ReadEEPROM(u32 offset, u8* data, int length);
+
 void UIC_SetBacklight(int enable);
 
 #endif

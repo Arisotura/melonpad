@@ -85,15 +85,6 @@ void main()
 	
 	// setup GPIO
 	*(vu32*)0xF0005114 = 0xC200;
-	
-	// rumble it!
-	//rumble();
-	//rumble();
-
-    // note:
-    // SPI speec 808C = (11 << 3) | 4
-    // 0x11 = 17 = 18-1
-    // 108*8 / 18 = 48
 
 
 	u8 buf[16];
@@ -155,14 +146,17 @@ void main()
 		frame++;
 		if (frame >= 15) frame = 0;
 
-        /*buf[0] = 0x07;
-        SPI_Start(SPI_DEVICE_UIC, 0x8018);//SPI_SPEED_UIC);
-        SPI_Write(buf, 1);
-        SPI_UICDelay();
-        SPI_Read((u8*)0x200000, 0x80);
-        SPI_Finish();*/
+        sInputData* test = Input_Scan();
 
-		if (!frame)
+        ClearRect(8+(16*8), 8+64, 8*8, 16*5);
+        DrawHex(8+(16*8), 8  +64, test->ButtonsDown);
+        DrawHex(8+(16*8), 8*3+64, test->LeftStickX);
+        DrawHex(8+(16*8), 8*5+64, test->LeftStickY);
+        DrawHex(8+(16*8), 8*7+64, test->RightStickX);
+        DrawHex(8+(16*8), 8*9+64, test->RightStickY);
+
+		//if (!frame)
+		if (0)
 		{
 			//u32 base = 0x003FFE00;
 			//u32 base = 0xE0010000;
