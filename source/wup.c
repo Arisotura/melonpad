@@ -170,7 +170,7 @@ void WUP_Init()
     SPI_Init();
     I2C_Init();
 
-    // TODO: upload UIC firmware if needed?
+    UIC_Init();
 
     GFX_Init();
     LCD_Init();
@@ -237,6 +237,20 @@ void IRQHandler()
 void Timer0IRQ(int irq, void* userdata)
 {
     Timer0Flag = 1;
+}
+
+void WUP_DelayUS(int us)
+{
+    *(vu32*)0xF0000410 = 0;
+    Timer0Flag = 0;
+    *(vu32*)0xF0000414 = 0;
+    *(vu32*)0xF0000418 = (us >> 1) - 1;
+    *(vu32*)0xF0000410 = 2;
+
+    while (!Timer0Flag)
+        WaitForIRQ();
+
+    *(vu32*)0xF0000410 = 0;
 }
 
 void WUP_DelayMS(int ms)

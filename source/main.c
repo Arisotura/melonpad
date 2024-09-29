@@ -1,5 +1,4 @@
 #include "wup.h"
-#include "uic.h"
 
 
 u32 GetCP15Reg(int cn, int cm, int cp);
@@ -91,6 +90,11 @@ void main()
 	//rumble();
 	//rumble();
 
+    // note:
+    // SPI speec 808C = (11 << 3) | 4
+    // 0x11 = 17 = 18-1
+    // 108*8 / 18 = 48
+
 
 	u8 buf[16];
 
@@ -116,44 +120,6 @@ void main()
     }
 
 
-    u8 uic_id;
-    buf[0] = 0x7F;
-    SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
-    SPI_Write(buf, 1);
-    SPI_Read(&uic_id, 1);
-    SPI_Finish();
-
-    /*buf[0] = 0xF2;
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    SPI_Write(buf, 16);
-    SPI_Finish();*/
-
-    buf[0] = 0x03;
-    buf[1] = 0x00;
-    buf[2] = 0x00;
-    buf[3] = 0x00;
-    buf[4] = 0x00;
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    SPI_Write(buf, 5);
-    SPI_Read((u8*)0x200000, 256);
-    SPI_Finish();
-
-
-	/*if (lcdid == 0x00000002)
-	{
-		// TODO Panasonic init
-	}
-	else if (lcdid == 0x08922201)
-	{
-		// other thing
-		// get status? returns 04 when backlight is on
-		buf[0] = 0x0A;
-		I2C_Write(3, 0x39, buf, 1, 1);
-		I2C_Read(3, 0x39, buf, 1);
-	}*/
-
-
-
 	DrawText(8, 8, "Hello world");
 	DrawText(8, 8+16, "haxing the WiiU gamepad ayyy");
 	DrawHex(8, 8+32, 0x12345678);
@@ -162,8 +128,8 @@ void main()
 	DrawHex(8, 8+80, GetCP15Reg(0, 0, 1));
 	DrawHex(8, 8+96, GetCP15Reg(0, 0, 2));
 	DrawHex(8, 8+112, GetCP15Reg(1, 0, 0));
-	//DrawHex(8, 8+128, zirp);
-	DrawHex(8, 8+144, uic_id);
+	//DrawHex(8, 8+128, exp[0]);
+	//DrawHex(8, 8+144, uic_id);
 
 	// 00041040
 	// 41069265
@@ -180,18 +146,27 @@ void main()
 
 	rumble();
 
+    //*(vu32*)0xF0005108 = 0x300;
+
 
     int frame = 0;
 	for (;;)
 	{
 		frame++;
-		if (frame >= 60) frame = 0;
+		if (frame >= 15) frame = 0;
+
+        /*buf[0] = 0x07;
+        SPI_Start(SPI_DEVICE_UIC, 0x8018);//SPI_SPEED_UIC);
+        SPI_Write(buf, 1);
+        SPI_UICDelay();
+        SPI_Read((u8*)0x200000, 0x80);
+        SPI_Finish();*/
 
 		if (!frame)
 		{
 			//u32 base = 0x003FFE00;
 			//u32 base = 0xE0010000;
-			//u32 base = 0xF0000800;
+			//u32 base = 0xF00050EC;
 			u32 base = 0x200000;
 			//u32 base = 0x1C0000;
 			ClearRect(8+(16*8), 8+64, 8*(17*4), 16*(16));

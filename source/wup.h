@@ -24,6 +24,7 @@ void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio);
 void WUP_EnableIRQ(u8 irq);
 void WUP_DisableIRQ(u8 irq);
 
+void WUP_DelayUS(int us);
 void WUP_DelayMS(int ms);
 
 #endif // _WUP_H_
