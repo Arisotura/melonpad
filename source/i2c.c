@@ -190,6 +190,8 @@ void I2C_Renesas_Wait(u32 bus)
     {
         if (!(base[0x8>>2] & 0x20))
             return;
+
+        WUP_DelayMS(1);
     }
 }
 
