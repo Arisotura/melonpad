@@ -188,7 +188,7 @@ void I2C_Renesas_Wait(u32 bus)
 
     for (;;)
     {
-        if (base[0x8>>2] & 0x20)
+        if (!(base[0x8>>2] & 0x20))
             return;
     }
 }
