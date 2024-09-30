@@ -146,8 +146,6 @@ void LCD_JDI_SetBrightness(int brightness)
     buf[0] = 0xB0; buf[1] = 0x03;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0);
 
-    WUP_DelayMS(32);
-
     buf[0] = 0xB0; buf[1] = 0x02;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0);
 
@@ -157,12 +155,8 @@ void LCD_JDI_SetBrightness(int brightness)
     buf[0] = 0xB0; buf[1] = 0x03;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0);
 
-    WUP_DelayMS(32);
-
     buf[0] = on ? 0x29 : 0x28;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 1, 0);
-
-    WUP_DelayMS(32);
 }
 
 void LCD_Panasonic_Init()
@@ -195,16 +189,10 @@ void LCD_Panasonic_SetBrightness(int brightness)
     buf[4] = BrightnessData[brightness*2];
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 5, 0);
 
-    WUP_DelayMS(32);
-
     buf[0] = 0x0B; buf[1] = 0xAA;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0);
-
-    WUP_DelayMS(32);
 
     buf[0] = 0x02;
     buf[1] = on ? 0x01 : 0x00;
     I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0);
-
-    WUP_DelayMS(32);
 }
