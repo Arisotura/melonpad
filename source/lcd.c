@@ -17,7 +17,15 @@ u8 BrightnessData[16];
 
 void LCD_Init()
 {
-    UIC_ReadEEPROM(0x277, BrightnessData, 16);
+    if (!UIC_ReadEEPROM(0x277, BrightnessData, 16))
+    {
+        for (int i = 0; i < 12; i+=2)
+        {
+            BrightnessData[i+0] = 0xFF;
+            BrightnessData[i+1] = 0x01;
+        }
+        BrightnessData[12] = 5;
+    }
 
     I2C_Start(I2C_BUS_LCD);
     *(vu32*)0xF0005100 = 0xC200;
