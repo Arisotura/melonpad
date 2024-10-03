@@ -18,6 +18,12 @@ int DisableIRQ();
 void RestoreIRQ(int irq);
 void WaitForIRQ();
 
+void DC_FlushRange(void* addr, int length);
+void DC_InvalidateRange(void* addr, int length);
+void DC_InvalidateAll();
+void IC_InvalidateRange(void* addr, int length);
+void IC_InvalidateAll();
+
 void WUP_Init();
 
 inline u8 WUP_HardwareType() { return REG_HARDWARE_ID & 0xFF; }
