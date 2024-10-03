@@ -29,11 +29,20 @@ _start:
 vec_reset:
 	mov r0, #0xD2
 	msr cpsr_c, r0
-	mov sp, #0x00380000
+	ldr sp, =__sp_irq
+	mov r0, #0xD3
+    msr cpsr_c, r0
+    ldr sp, =__sp_svc
 	mov r0, #0xDF
 	msr cpsr_c, r0
-	mov sp, #0x00340000
+	ldr sp, =__sp_usr
+
 	bl setup_mmu
+
+	ldr r0, =__bss_start__
+	ldr r1, =__bss_end__
+	bl clear_mem
+
 	//mov r0, #0xD0
     //msr cpsr_c, r0
 	bl main
@@ -52,6 +61,20 @@ vec_irq:
 	subs pc, lr, #4
 
 
+clear_mem:
+    add r0, r0, #3
+    bic r0, r0, #3
+    mov r2, #0
+    mov r3, #0
+    mov r4, #0
+    mov r5, #0
+_clear_loop:
+    stmia r0!, {r2-r5}
+    cmp r0, r1
+    blt _clear_loop
+    bx lr
+
+
 // MMU setup
 // (TODO: main RAM mirrors?)
 // 00000000-003F8000: main RAM
@@ -65,26 +88,15 @@ setup_mmu:
     add r12, r11, #0x4000       // L2 table pointer
 
     // disable caches
-    mrc p15,0,r0,c1,c0,0
+    mrc p15, 0, r0, c1, c0, 0
     bic r0, r0, #0xD
     bic r0, r0, #0x1000
-    mcr p15,0,r0,c1,c0,0
+    mcr p15, 0, r0, c1, c0, 0
 
     // zerofill the tables
-    mov r0, #0
-    mov r1, #0
-    mov r2, #0
-    mov r3, #0
-    mov r4, #0
-    mov r5, #0
-    mov r6, #0
-    mov r7, #0
-    mov r8, r11
-    ldr r9, =0x3FF000
-_mmu_l1_zf_loop:
-    stmia r8!, {r0-r7}
-    cmp r8, r9
-    bne _mmu_l1_zf_loop
+    mov r0, r11
+    add r1, r0, #0x3000
+    bl clear_mem
 
     // main RAM
     mov r0, #0
@@ -133,18 +145,18 @@ _mmu_l1_zf_loop:
     bl mmu_l2_fill_64k
 
     // setup CP15 regs
-    mcr p15,0,r11,c2,c0,0
+    mcr p15, 0, r11, c2, c0, 0
     ldr r0, =0x55555555
-    mcr p15,0,r0,c3,c0,0
+    mcr p15, 0, r0, c3, c0, 0
     mov r0, #0
-    mcr p15,0,r0,c13,c0,0
-    mcr p15,0,r0,c1,c0,0
+    mcr p15, 0, r0, c13, c0, 0
+    mcr p15, 0, r0, c1, c0, 0
 
     // enable caches
-    mrc p15,0,r0,c1,c0,0
+    mrc p15, 0, r0, c1, c0, 0
     orr r0, r0, #0xD
     orr r0, r0, #0x1000
-    mcr p15,0,r0,c1,c0,0
+    mcr p15, 0, r0, c1, c0, 0
 
     bx r10
 
