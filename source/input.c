@@ -4,21 +4,6 @@
 static sInputData InputData;
 
 
-// REMOVE ME
-static u32 derp_div(u32 a, u32 b)
-{
-    u32 ret = 0;
-
-    while (a >= b)
-    {
-        a -= b;
-        ret++;
-    }
-
-    return ret;
-}
-
-
 void Input_Init()
 {
     // TODO
@@ -85,8 +70,8 @@ sInputData* Input_Scan()
 
     if (nvalid > 0)
     {
-        InputData.TouchX = derp_div(touchX, nvalid);
-        InputData.TouchY = derp_div(touchY, nvalid);
+        InputData.TouchX = touchX / nvalid;
+        InputData.TouchY = touchY / nvalid;
         InputData.TouchPressed = 1;
     }
     else

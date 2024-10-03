@@ -1,6 +1,8 @@
 #ifndef _WUP_H_
 #define _WUP_H_
 
+#include <stdlib.h>
+
 #include "types.h"
 #include "regs.h"
 

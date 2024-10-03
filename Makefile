@@ -77,17 +77,16 @@ INCLUDES	:=	include build
 #---------------------------------------------------------------------------------
 ARCH	:=	-marm
 
-CFLAGS	:=	-Wall -O2\
+CFLAGS	:=	-g -Wall -O2\
  			-march=armv5te -mtune=arm926ej-s -fomit-frame-pointer\
 			-ffast-math \
-			-nostdlib -nostartfiles -ffreestanding \
 			$(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -DARM9
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
-ASFLAGS	:=	$(ARCH)
-LDFLAGS	=	-T $(CURDIR)/../melon.ld $(ARCH) -nostdlib -nostartfiles -ffreestanding -Wl,-Map,$(notdir $*.map)
+ASFLAGS	:=	-g $(ARCH)
+LDFLAGS	=	-T $(CURDIR)/../melon.ld -g $(ARCH) -nostartfiles -Wl,-Map,$(notdir $*.map)
 
 # NOTE: -g in CFLAGS ASFLAGS LDFLAGS
 

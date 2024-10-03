@@ -17,7 +17,4 @@ typedef volatile u64 vu64;
 
 typedef void (*fnIRQHandler)(int irq, void* user);
 
-// HACK
-#define NULL (void*)0
-
 #endif

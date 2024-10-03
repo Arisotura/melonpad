@@ -14,21 +14,6 @@ static void fill16(u32 a, u32 b, u32 v)
 }
 
 
-// REMOVE ME
-static u32 derp_div(u32 a, u32 b)
-{
-    u32 ret = 0;
-
-    while (a >= b)
-    {
-        a -= b;
-        ret++;
-    }
-
-    return ret;
-}
-
-
 typedef struct
 {
     fnIRQHandler handler;
@@ -136,27 +121,26 @@ void WUP_Init()
     fill32(0xF000503C, 0xF0005044, 0x0001);
 
     // configure timer 1 with a 1ms interval
-    u32 wat = *(vu32*)0xF0000400;
-    wat = derp_div(0x66FF300, wat+1);
-    wat = derp_div(wat, 0x3E8);
+    u32 timerval = *(vu32*)0xF0000400;
+    timerval = 108000000 / (timerval+1);
+    timerval /= 1000;
 
-    u32 r4, r5;
-    u32 lsb = wat & 0xFF;
-    if (!(lsb & 0xFF)) { r4 = wat>>8; r5 = 0x70; }
-    else if (!(lsb & 0x7F)) { r4 = wat>>7; r5 = 0x60; }
-    else if (!(lsb & 0x3F)) { r4 = wat>>6; r5 = 0x50; }
-    else if (!(lsb & 0x1F)) { r4 = wat>>5; r5 = 0x40; }
-    else if (!(lsb & 0x0F)) { r4 = wat>>4; r5 = 0x30; }
-    else if (!(lsb & 0x07)) { r4 = wat>>3; r5 = 0x20; }
-    else if (!(lsb & 0x03)) { r4 = wat>>2; r5 = 0x10; }
-    else                    { r4 = wat>>1; r5 = 0x00; }
+    u32 target, prescaler;
+    if      (!(timerval & 0xFF)) { target = timerval>>8; prescaler = 0x70; }
+    else if (!(timerval & 0x7F)) { target = timerval>>7; prescaler = 0x60; }
+    else if (!(timerval & 0x3F)) { target = timerval>>6; prescaler = 0x50; }
+    else if (!(timerval & 0x1F)) { target = timerval>>5; prescaler = 0x40; }
+    else if (!(timerval & 0x0F)) { target = timerval>>4; prescaler = 0x30; }
+    else if (!(timerval & 0x07)) { target = timerval>>3; prescaler = 0x20; }
+    else if (!(timerval & 0x03)) { target = timerval>>2; prescaler = 0x10; }
+    else                         { target = timerval>>1; prescaler = 0x00; }
 
-    if (r4 > 0) r4--;
+    if (target > 0) target--;
 
     *(vu32*)0xF0001424 = 1;
-    *(vu32*)0xF0000420 = r5;
-    *(vu32*)0xF0000428 = r4;
-    *(vu32*)0xF0000420 = r5|0x2;
+    *(vu32*)0xF0000420 = prescaler;
+    *(vu32*)0xF0000428 = target;
+    *(vu32*)0xF0000420 = prescaler | 0x2;
 
     // reset count-up timer
     *(vu32*)0xF0000408 = 0;
