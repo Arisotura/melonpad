@@ -49,6 +49,7 @@
 // REG_SPDMA_START settings
 #define SPDMA_START             (1<<0)
 #define SPDMA_STOP              (1<<1)
+#define SPDMA_BUSY              (1<<0)
 
 // REG_SPDMA_CNT settings
 #define SPDMA_DIR_READ          (0<<0)
@@ -70,6 +71,7 @@
 // REG_GPDMA_START settings
 #define GPDMA_START             (1<<0)
 #define GPDMA_STOP              (1<<1)
+#define GPDMA_BUSY              (1<<0)
 
 // REG_GPDMA_CNT settings
 #define GPDMA_REVERSE_16B       (1<<0)

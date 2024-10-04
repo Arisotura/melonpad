@@ -2,10 +2,12 @@
 #define _WUP_H_
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "types.h"
 #include "regs.h"
 
+#include "dma.h"
 #include "spi.h"
 #include "i2c.h"
 

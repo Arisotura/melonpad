@@ -151,6 +151,7 @@ void WUP_Init()
     WUP_SetIRQHandler(IRQ_TIMER0, Timer0IRQ, NULL, 0);
     Timer0Flag = 0;
 
+    DMA_Init();
     SPI_Init();
     I2C_Init();
 

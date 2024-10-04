@@ -79,12 +79,6 @@ void ClearRect(int x, int y, int w, int h)
 }
 
 
-volatile int irqnum;
-void test_irq(int irq, void* derp)
-{
-    irqnum = irq;
-}
-
 
 // FPGA debug output
 
@@ -194,42 +188,7 @@ void main()
         //DrawHex(8, 8 + 144 + (32*i), GetCP15Reg(6, i, 1));
     }*/
 
-	//DrawHex(8, 8+128, exp[0]);
-	//DrawHex(8, 8+144, uic_id);
 
-	// 00041040
-	// 41069265
-	// 1D152152
-	// 00000000
-	// 00050078
-
-	// 000 1110 1   000 101 010 0 10   000 101 010 0 10
-	// len=2 m=0 assoc=2 size=5
-	// cache type = E???
-	// 8 << 2 = 32 bytes line len
-	// 1 << 2 = 4-way assoc
-	// 200 << 5 = 4000 = 16K
-
-	//rumble();
-
-    *(vu32*)0xF0004000 |= 0x8001;
-    *(vu32*)0xF0004000 &= ~0xFC;
-
-    WUP_SetIRQHandler(0x08, test_irq, NULL, 0);
-    WUP_SetIRQHandler(0x09, test_irq, NULL, 0);
-    //WUP_SetIRQHandler(0x0A, test_irq, NULL, 0);
-    //WUP_SetIRQHandler(0x0B, test_irq, NULL, 0);
-    WUP_SetIRQHandler(0x0C, test_irq, NULL, 0);     // DMA4
-    WUP_SetIRQHandler(0x0D, test_irq, NULL, 0);     // DMA2
-    WUP_SetIRQHandler(0x0E, test_irq, NULL, 0);     // DMA3
-    irqnum = 0;
-
-    //*(vu32*)0xF0005108 = 0x300;
-
-
-
-    //rumble();
-    //send_string("hello world\n");
 
 
     buf[0] = *(u8*)0x3FFFFC;
