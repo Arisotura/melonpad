@@ -83,6 +83,7 @@
 #define GPDMA_MASKED_FILL       (1<<7)
 #define GPDMA_MASKED_BGFILL     (0<<8)
 #define GPDMA_MASKED_BGTRANS    (1<<8)
+#define GPDMA_MASKED_REVERSE    (1<<9)
 #define GPDMA_SIMPLE_FILL       (1<<10)
 
 

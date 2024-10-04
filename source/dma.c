@@ -160,7 +160,7 @@ void GPDMA_BlitFill(u32 chan, int fillval, int fill16, void* dst, u32 dststride,
     REG_GPDMA_START(chan) = GPDMA_START;
 }
 
-void GPDMA_BlitMaskedFill(u32 chan, const void* mask, u32 maskstride, int fillfg, int fillbg, int fill16, void* dst, u32 dststride, u32 linelen, u32 len)
+void GPDMA_BlitMaskedFill(u32 chan, const void* mask, int fillfg, int fillbg, int fill16, void* dst, u32 dststride, u32 linelen, u32 len)
 {
     if (chan > 2) return;
 
@@ -191,7 +191,7 @@ void GPDMA_BlitMaskedFill(u32 chan, const void* mask, u32 maskstride, int fillfg
     DMA_IRQFlag[2+chan] = 0;
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_MASKED_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = linelen;
-    REG_GPDMA_SRCSTRIDE(chan) = maskstride;
+    REG_GPDMA_SRCSTRIDE(chan) = 0;
     REG_GPDMA_DSTSTRIDE(chan) = dststride;
     REG_GPDMA_LEN(chan) = len - 1;
     REG_GPDMA_SRCADDR(chan) = (u32)mask;

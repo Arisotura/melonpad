@@ -42,7 +42,7 @@ int _write(int file, char *ptr, int len)
     if (file == 1)
     {
         // FPGA debug
-        const int csize = 0x3FFF;
+        /*const int csize = 0x3FFF;
         for (int i = 0; i < len; i += csize)
         {
             int chunk = csize;
@@ -60,7 +60,8 @@ int _write(int file, char *ptr, int len)
             SPI_Write(buf, 3);
             SPI_Write((u8*)ptr, len);
             SPI_Finish();
-        }
+        }*/
+        Console_Print(ptr, len);
 
         return len;
     }

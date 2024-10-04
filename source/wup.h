@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "types.h"
 #include "regs.h"
@@ -15,6 +16,7 @@
 #include "lcd.h"
 #include "gfx.h"
 
+#include "console.h"
 #include "input.h"
 
 void EnableIRQ();

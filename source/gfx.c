@@ -57,7 +57,7 @@ void GFX_Init()
     *(vu32*)0xF0009468 = 0x8;
     *(vu32*)0xF0009464 = 854;
     *(vu32*)0xF000946C = 480;
-    *(vu32*)0xF0009470 = 854;
+    *(vu32*)0xF0009470 = 856;
     *(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 0;
     *(vu32*)0xF00094B4 &= ~0xFFFF;
 
@@ -91,6 +91,8 @@ void GFX_Init()
 void GFX_VBlank(int irq, void* userdata)
 {
     VBlankFlag = 1;
+
+    //Console_Update();
 }
 
 void GFX_WaitForVBlank()
@@ -98,6 +100,8 @@ void GFX_WaitForVBlank()
     VBlankFlag = 0;
     while (!VBlankFlag)
         WaitForIRQ();
+
+    Console_Update();
 }
 
 

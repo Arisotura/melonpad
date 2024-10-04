@@ -16,7 +16,7 @@ void rumble()
 }
 
 
-
+#if 0
 #include "font.h"
 
 void DrawText(int x, int y, char* str)
@@ -77,6 +77,7 @@ void ClearRect(int x, int y, int w, int h)
 		}
 	}
 }
+#endif
 
 
 
@@ -151,7 +152,7 @@ void main()
 	u8 buf[16];
 
 
-    {
+    /*{
         // palette -- FFrrggbb
         u32 pal[256];
         pal[0] = 0xFF000044;
@@ -181,12 +182,14 @@ void main()
 	DrawHex(8, 8+96, GetCP15Reg(0, 0, 2));
 	DrawHex(8, 8+112, GetCP15Reg(1, 0, 0));
 	//DrawHex(8, 8+128, GetCP15Reg(6, 0, 0));
-	//DrawHex(8, 8+144, GetCP15Reg(6, 0, 0));
+	//DrawHex(8, 8+144, GetCP15Reg(6, 0, 0));*/
     /*for (int i = 0; i < 8; i++)
     {
         DrawHex(8, 8 + 128 + (32*i), GetCP15Reg(6, i, 0));
         //DrawHex(8, 8 + 144 + (32*i), GetCP15Reg(6, i, 1));
     }*/
+
+    Console_OpenDefault();
 
 
 
@@ -256,21 +259,18 @@ void main()
 		frame++;
 		if (frame >= 15) frame = 0;
 
-        /*sInputData* test = Input_Scan();
+        sInputData* test = Input_Scan();
 
-        ClearRect(8+(16*8), 8+64, 8*8, 16*9);
-        DrawHex(8+(16*8), 8  +64, test->ButtonsDown);
-        DrawHex(8+(16*8), 8*3+64, test->LeftStickX);
-        DrawHex(8+(16*8), 8*5+64, test->LeftStickY);
-        DrawHex(8+(16*8), 8*7+64, test->RightStickX);
-        DrawHex(8+(16*8), 8*9+64, test->RightStickY);
-        DrawHex(8+(16*8), 8*11+64, test->TouchX);
-        DrawHex(8+(16*8), 8*13+64, test->TouchY);
-        DrawHex(8+(16*8), 8*15+64, test->TouchPressure);
-        DrawHex(8+(16*8), 8*17+64, test->TouchPressed);*/
+        if (test->ButtonsPressed & BTN_A)
+            printf("Pressed A! frame=%d\n", frame);
+        if (test->ButtonsPressed & BTN_B)
+            printf("Pressed B! frame=%d\n", frame);
+        if (test->ButtonsPressed & BTN_UP)
+            printf("Pressed UP! frame=%d,\nthis is a multi-line printf\nI like it\n", frame);
+        if (test->ButtonsPressed & BTN_DOWN)
+            printf("Pressed DOWN! this is going to be a really long line, the point is to test how far the console thing can go and whether it handles this correctly\n");
 
-        UIC_SendCommand(0x0A, NULL, 0, (u8*)0x200000, 6);
-
+#if 0
         ClearRect(8+(16*8), 8+64+256, 8*8, 16*2);
         DrawHex(8+(16*8), 8+64+256, (u32)derp);
         //DrawHex(8+(16*8), 8+64+256+16, time2);
@@ -319,7 +319,7 @@ void main()
 			//DrawHex(8+(9*8), 8+32, *(vu32*)0xF0009484);
 			// 00FF0000
 		}
-
+#endif
 		GFX_WaitForVBlank();
 	}
 }

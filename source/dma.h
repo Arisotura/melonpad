@@ -26,7 +26,7 @@ void GPDMA_BlitFill(u32 chan,
                     u32 linelen, u32 len);
 
 void GPDMA_BlitMaskedFill(u32 chan,
-                          const void* mask, u32 maskstride, int fillfg, int fillbg, int fill16,
+                          const void* mask, int fillfg, int fillbg, int fill16,
                           void* dst, u32 dststride,
                           u32 linelen, u32 len);
 
