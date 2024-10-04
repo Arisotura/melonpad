@@ -1,4 +1,4 @@
-#include "wup.h"
+#include <wup/wup.h>
 
 
 volatile u8 DMA_IRQFlag[5];

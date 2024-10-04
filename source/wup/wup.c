@@ -1,4 +1,4 @@
-#include "wup.h"
+#include <wup/wup.h>
 
 
 static void fill32(u32 a, u32 b, u32 v)

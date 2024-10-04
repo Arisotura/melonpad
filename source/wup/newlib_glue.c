@@ -6,7 +6,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 
-#include "wup.h"
+#include <wup/wup.h>
 
 
 char *__env[1] = { 0 };

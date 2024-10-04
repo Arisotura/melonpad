@@ -1,4 +1,4 @@
-#include "wup.h"
+#include <wup/wup.h>
 
 
 // GFX TODO
