@@ -43,11 +43,11 @@ I also plan to put up the code for my FLASH emulator on Github. Getting that to 
 * I2C
 * SPI
 * LCD and framebuffer initialization
+* DMA
+* Input
 
 ## Roadmap
 
-* Adapting newlib to this environment
-* Input
 * Wifi
 * Audio, and the other fun devices the gamepad has
 
