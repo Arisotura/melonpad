@@ -142,12 +142,17 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-.PHONY: $(BUILD) clean
+.PHONY: all $(BUILD) fwpack clean
+all: $(BUILD)
 
 #---------------------------------------------------------------------------------
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
+
+fwpack:
+	@echo making fwpack...
+	@gcc ./tools/fwpack.c -o ./tools/fwpack
 
 #---------------------------------------------------------------------------------
 clean:
