@@ -21,9 +21,67 @@
 #define IRQ_SDIO                0x02
 #define IRQ_SPI                 0x06
 #define IRQ_SPI_UNK             0x07
+#define IRQ_SPDMA0               0x08
+#define IRQ_SPDMA1               0x09
+#define IRQ_GPDMA2               0x0C
+#define IRQ_GPDMA0               0x0D
+#define IRQ_GPDMA1               0x0E
 #define IRQ_I2C                 0x0F
 #define IRQ_VBLANK_END          0x15
 #define IRQ_VBLANK              0x16
+
+
+// --- DMA --------------------------------------------------------------------
+
+#define REG_DMA_CNT             *(vu32*)0xF0004000
+
+// DMA channels:
+// SPDMA: Peripheral DMA (from peripheral to memory, and vice versa)
+// GPDMA: Memory DMA (from memory to memory)
+
+#define REG_SPDMA_START(i)      *(vu32*)(0xF0004040 + ((i)*0x20))
+#define REG_SPDMA_CNT(i)        *(vu32*)(0xF0004044 + ((i)*0x20))
+#define REG_SPDMA_UNK08(i)      *(vu32*)(0xF0004048 + ((i)*0x20))
+#define REG_SPDMA_UNK0C(i)      *(vu32*)(0xF000404C + ((i)*0x20))
+#define REG_SPDMA_LEN(i)        *(vu32*)(0xF0004050 + ((i)*0x20))
+#define REG_SPDMA_MEMADDR(i)    *(vu32*)(0xF0004054 + ((i)*0x20))
+
+// REG_SPDMA_START settings
+#define SPDMA_START             (1<<0)
+#define SPDMA_STOP              (1<<1)
+
+// REG_SPDMA_CNT settings
+#define SPDMA_DIR_READ          (0<<0)
+#define SPDMA_DIR_WRITE         (1<<0)
+#define SPDMA_PERI_SPI          (2<<1)
+#define SPDMA_PERI_IR           (6<<1)
+
+#define REG_GPDMA_START(i)      *(vu32*)(0xF0004100 + ((i)*0x40))
+#define REG_GPDMA_CNT(i)        *(vu32*)(0xF0004104 + ((i)*0x40))
+#define REG_GPDMA_LINELEN(i)    *(vu32*)(0xF0004108 + ((i)*0x40))
+#define REG_GPDMA_SRCSTRIDE(i)  *(vu32*)(0xF000410C + ((i)*0x40))
+#define REG_GPDMA_DSTSTRIDE(i)  *(vu32*)(0xF0004110 + ((i)*0x40))
+#define REG_GPDMA_LEN(i)        *(vu32*)(0xF0004114 + ((i)*0x40))
+#define REG_GPDMA_SRCADDR(i)    *(vu32*)(0xF0004118 + ((i)*0x40))
+#define REG_GPDMA_DSTADDR(i)    *(vu32*)(0xF000411C + ((i)*0x40))
+#define REG_GPDMA_FGFILL(i)     *(vu32*)(0xF0004120 + ((i)*0x40))
+#define REG_GPDMA_BGFILL(i)     *(vu32*)(0xF0004124 + ((i)*0x40))
+
+// REG_GPDMA_START settings
+#define GPDMA_START             (1<<0)
+#define GPDMA_STOP              (1<<1)
+
+// REG_GPDMA_CNT settings
+#define GPDMA_REVERSE_16B       (1<<0)
+#define GPDMA_REVERSE_8B        (1<<1)
+#define GPDMA_SRC_DECREMENT     (3<<2)
+#define GPDMA_SRC_INCREMENT     (3<<4)
+#define GPDMA_FILL_8BIT         (0<<6)
+#define GPDMA_FILL_16BIT        (1<<6)
+#define GPDMA_MASKED_FILL       (1<<7)
+#define GPDMA_MASKED_BGFILL     (0<<8)
+#define GPDMA_MASKED_BGTRANS    (1<<8)
+#define GPDMA_SIMPLE_FILL       (1<<10)
 
 
 // --- SPI --------------------------------------------------------------------
@@ -41,6 +99,7 @@
 // REG_SPI_SPEED settings for FLASH and UIC.
 // Not yet sure how they correlate to the actual SPI clock speed.
 // These settings mean 48MHz for FLASH and 248KHz for UIC.
+// TODO: add the other UIC clock, 8MHz (0x8018)
 #define SPI_SPEED_FLASH         0x808C
 #define SPI_SPEED_UIC           0x8400
 
