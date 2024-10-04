@@ -13,8 +13,12 @@ char *__env[1] = { 0 };
 char **environ = __env;
 
 
+void send_string(char* str);
+
 int _open(const char *name, int flags, ...)
 {
+    send_string("_open\n");
+    send_string(name);
     return -1;
 }
 
@@ -35,7 +39,32 @@ int _read(int file, char *ptr, int len)
 
 int _write(int file, char *ptr, int len)
 {
-    return 0;
+    if (file == 1)
+    {
+        // FPGA debug
+        const int csize = 0x3FFF;
+        for (int i = 0; i < len; i += csize)
+        {
+            int chunk = csize;
+            if ((i + chunk) > len)
+                chunk = len - i;
+
+            u16 header = 0x8000 | (chunk & 0x3FFF);
+
+            u8 buf[3];
+            buf[0] = 0xF2;
+            buf[1] = header >> 8;
+            buf[2] = header & 0xFF;
+
+            SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+            SPI_Write(buf, 3);
+            SPI_Write((u8*)ptr, len);
+            SPI_Finish();
+        }
+
+        return len;
+    }
+    return len;
 }
 
 int _isatty(int file)
@@ -70,6 +99,7 @@ int _unlink(char *name)
 void _exit()
 {
     // TODO.
+    send_string("_exit\n");
     for (;;);
 }
 
@@ -94,31 +124,32 @@ int _getpid()
 
 int _kill(int pid, int sig)
 {
+    send_string("_kill\n");
     errno = EINVAL;
     return -1;
 }
 
 caddr_t _sbrk(int incr)
 {
-#if 0
-    extern char _end;		/* Defined by the linker */
+
+    extern char __end__;		/* Defined by the linker */
+    extern char _stack;
     static char *heap_end;
     char *prev_heap_end;
 
-    if (heap_end == 0) {
-        heap_end = &_end;
+    if (heap_end == 0)
+    {
+        heap_end = &__end__;
     }
     prev_heap_end = heap_end;
-    if (heap_end + incr > stack_ptr) {
-        write (1, "Heap and stack collision\n", 25);
-        abort ();
+    if ((heap_end + incr) > &_stack)
+    {
+        errno = ENOMEM;
+        return (caddr_t)-1;
     }
 
     heap_end += incr;
-    return (caddr_t) prev_heap_end;
-#endif
-    // TODO
-    return NULL;
+    return (caddr_t)prev_heap_end;
 }
 
 

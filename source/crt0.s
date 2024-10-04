@@ -17,10 +17,10 @@ _start:
 	ldr pc, [pc, #0x18]
 	ldr pc, [pc, #0x18]
 	.word vec_reset
-	.word halt_loop
+	.word vec_undefined
 	.word vec_swi
-	.word halt_loop
-	.word halt_loop
+	.word vec_prefabort
+	.word vec_dataabort
 	.word halt_loop
 	.word vec_irq
 	.word halt_loop
@@ -39,13 +39,18 @@ vec_reset:
 
 	bl setup_mmu
 
+	//mov r0, #0xD0
+    //msr cpsr_c, r0
+
 	ldr r0, =__bss_start__
 	ldr r1, =__bss_end__
 	bl clear_mem
 
-	//mov r0, #0xD0
-    //msr cpsr_c, r0
-	bl main
+	ldr r3, =WUP_Init
+	blx r3
+
+	ldr r3, =main
+	blx r3
 	b halt_loop
 
 halt_loop:
@@ -56,9 +61,17 @@ vec_swi:
 
 vec_irq:
 	stmdb sp!, {r0-r3, r12, lr}
-	bl IRQHandler
+	ldr r3, =IRQHandler
+	blx r3
 	ldmia sp!, {r0-r3, r12, lr}
 	subs pc, lr, #4
+
+vec_undefined:
+vec_prefabort:
+vec_dataabort:
+    ldr r3, =ExceptionHandler
+    blx r3
+    b halt_loop
 
 
 clear_mem:

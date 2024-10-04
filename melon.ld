@@ -13,7 +13,7 @@ MEMORY
 }
 
 __ram_end	=	ORIGIN(ram) + LENGTH(ram);
-__heap_end	=	ORIGIN(ram) + LENGTH(ram);
+__eheap_end	=	ORIGIN(ram) + LENGTH(ram);
 
 __sp_svc	=	__ram_end - 0x100;
 __sp_irq	=	__sp_svc - 0x100;

@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <string.h>
+
 #include "wup.h"
 
 
@@ -76,12 +79,76 @@ void ClearRect(int x, int y, int w, int h)
 }
 
 
+volatile int irqnum;
+void test_irq(int irq, void* derp)
+{
+    irqnum = irq;
+}
+
+
+// FPGA debug output
+
+void send_binary(u8* data, int len)
+{
+    len &= 0x3FFF;
+    u16 header = len;
+
+    u8 buf[3];
+    buf[0] = 0xF2;
+    buf[1] = header >> 8;
+    buf[2] = header & 0xFF;
+
+    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Write(buf, 3);
+    SPI_Write(data, len);
+    SPI_Finish();
+}
+
+void send_string(char* str)
+{
+    int len = strlen(str);
+
+    len &= 0x3FFF;
+    u16 header = 0x8000 | len;
+
+    u8 buf[3];
+    buf[0] = 0xF2;
+    buf[1] = header >> 8;
+    buf[2] = header & 0xFF;
+
+    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Write(buf, 3);
+    SPI_Write((u8*)str, len);
+    SPI_Finish();
+}
+
+void dump_data(u8* data, int len)
+{
+    len &= 0x3FFF;
+    u16 header = 0x4000 | len;
+
+    u8 buf[3];
+    buf[0] = 0xF2;
+    buf[1] = header >> 8;
+    buf[2] = header & 0xFF;
+
+    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Write(buf, 3);
+    SPI_Write(data, len);
+    SPI_Finish();
+}
+
+
+
+void ExceptionHandler()
+{
+    send_string("EXCEPTION\n");
+}
+
 
 void main()
 {
 	u32 i;
-
-	WUP_Init();
 	
 	// setup GPIO
 	*(vu32*)0xF0005114 = 0xC200;
@@ -119,6 +186,14 @@ void main()
 	DrawHex(8, 8+80, GetCP15Reg(0, 0, 1));
 	DrawHex(8, 8+96, GetCP15Reg(0, 0, 2));
 	DrawHex(8, 8+112, GetCP15Reg(1, 0, 0));
+	//DrawHex(8, 8+128, GetCP15Reg(6, 0, 0));
+	//DrawHex(8, 8+144, GetCP15Reg(6, 0, 0));
+    /*for (int i = 0; i < 8; i++)
+    {
+        DrawHex(8, 8 + 128 + (32*i), GetCP15Reg(6, i, 0));
+        //DrawHex(8, 8 + 144 + (32*i), GetCP15Reg(6, i, 1));
+    }*/
+
 	//DrawHex(8, 8+128, exp[0]);
 	//DrawHex(8, 8+144, uic_id);
 
@@ -135,9 +210,84 @@ void main()
 	// 1 << 2 = 4-way assoc
 	// 200 << 5 = 4000 = 16K
 
-	rumble();
+	//rumble();
+
+    *(vu32*)0xF0004000 |= 0x8001;
+    *(vu32*)0xF0004000 &= ~0xFC;
+
+    WUP_SetIRQHandler(0x08, test_irq, NULL, 0);
+    WUP_SetIRQHandler(0x09, test_irq, NULL, 0);
+    //WUP_SetIRQHandler(0x0A, test_irq, NULL, 0);
+    //WUP_SetIRQHandler(0x0B, test_irq, NULL, 0);
+    WUP_SetIRQHandler(0x0C, test_irq, NULL, 0);     // DMA4
+    WUP_SetIRQHandler(0x0D, test_irq, NULL, 0);     // DMA2
+    WUP_SetIRQHandler(0x0E, test_irq, NULL, 0);     // DMA3
+    irqnum = 0;
 
     //*(vu32*)0xF0005108 = 0x300;
+
+
+
+    //rumble();
+    //send_string("hello world\n");
+
+
+    buf[0] = *(u8*)0x3FFFFC;
+    //buf[1] = UIC_GetState();
+
+    //send_string("dfgfdg\n");
+    //send_binary(buf, 2);
+
+    //*(vu32*)0x80000000 = 2;
+
+    //printf("printf test: %08X\n", *(vu32*)0xF0000000);
+    u8* derp = (u8*)malloc(200);
+    /*char str[200];
+    sprintf(str, "sprintf test: %08X\n", *(vu32*)0xF0000000);
+    send_string(str);*/
+
+    printf("printf test: %08X\n", *(vu32*)0xF0000000);
+
+    ((u8*)0x200000)[0] = *(u8*)0x3FFFFC;
+
+
+    /*for (int i = 0; i < 256; i++)
+        ((u8*)0x200000)[i] = i;
+
+    dump_data((u8*)0x200000, 256);*/
+
+    /*for (u32 i = 0; i < 0x700; i+=128)
+    {
+        UIC_ReadEEPROM(i, (u8*)(0x200000+i), 128);
+    }
+    dump_data((u8*)0x200000, 0x700);*/
+
+    /*u8* fbtest = (u8*)GFX_GetFramebuffer();
+
+    *(vu32*)0xF0000408 = 0;
+    for (int y = 0; y < 480; y++)
+    {
+        for (int x = 0; x < 854; x++)
+        {
+            u32 pixel = 0;
+            *(u8*)&fbtest[(y * 854) + x] = pixel;
+        }
+    }
+    u32 time1 = *(vu32*)0xF0000408;
+
+    *(vu32*)0xF0000408 = 0;
+    *(vu32*)0xF0004184 = 0x430;
+    *(vu32*)0xF0004188 = 854;
+    *(vu32*)0xF000418C = 854; // source stride
+    *(vu32*)0xF0004190 = 854; // destination stride
+    *(vu32*)0xF0004194 = (854*480)-1; // byte count - 1
+    *(vu32*)0xF0004198 = 0;//0x200000; // source
+    *(vu32*)0xF000419C = (u32)fbtest; // destination
+    *(vu32*)0xF00041A0 = 0;  // fill value
+    *(vu32*)0xF00041A4 = 0;     // weird
+    *(vu32*)0xF0004180 |= 1;
+    while (!irqnum) WaitForIRQ();
+    u32 time2 = *(vu32*)0xF0000408;*/
 
 
     int frame = 0;
@@ -147,7 +297,7 @@ void main()
 		frame++;
 		if (frame >= 15) frame = 0;
 
-        sInputData* test = Input_Scan();
+        /*sInputData* test = Input_Scan();
 
         ClearRect(8+(16*8), 8+64, 8*8, 16*9);
         DrawHex(8+(16*8), 8  +64, test->ButtonsDown);
@@ -158,15 +308,22 @@ void main()
         DrawHex(8+(16*8), 8*11+64, test->TouchX);
         DrawHex(8+(16*8), 8*13+64, test->TouchY);
         DrawHex(8+(16*8), 8*15+64, test->TouchPressure);
-        DrawHex(8+(16*8), 8*17+64, test->TouchPressed);
+        DrawHex(8+(16*8), 8*17+64, test->TouchPressed);*/
+
+        UIC_SendCommand(0x0A, NULL, 0, (u8*)0x200000, 6);
+
+        ClearRect(8+(16*8), 8+64+256, 8*8, 16*2);
+        DrawHex(8+(16*8), 8+64+256, (u32)derp);
+        //DrawHex(8+(16*8), 8+64+256+16, time2);
 
 		//if (!frame)
-		if (0)
+		//if (0)
+        if (!d)
 		{
             d = 1;
 			//u32 base = 0x003FFE00;
 			//u32 base = 0xE0010000;
-			//u32 base = 0xF00050EC;
+			//u32 base = 0xF0004100;
 			u32 base = 0x200000;
 			//u32 base = 0x1C0000;
 			ClearRect(8+(16*8), 8+64, 8*(17*4), 16*(16));

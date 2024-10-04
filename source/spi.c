@@ -24,12 +24,10 @@ void SPI_Init()
     WUP_SetIRQHandler(IRQ_SPI, SPI_IRQHandler, NULL, 0);
 }
 
-u32* irqlog = (u32*)0x200040;
+
 void SPI_IRQHandler(int irq, void* userdata)
 {
     u32 flags = REG_SPI_IRQ_STATUS;
-
-    //*irqlog++ = flags | 0x34000000;
 
     if (flags & SPI_IRQ_READ)
     {
@@ -47,9 +45,6 @@ void SPI_IRQHandler(int irq, void* userdata)
 
 void SPI_Start(u32 device, u32 speed)
 {
-    //*irqlog++ = 0x12000000 | device | (speed<<8);
-    //REG_SPI_CNT = 0x307;
-    //REG_SPI_UNK14 = (REG_SPI_UNK14 & ~0x8013) | 0x8010;
     REG_SPI_DEVICE_SEL = device & 0x3;
     REG_SPI_SPEED = speed & 0x87FF;
 
@@ -58,20 +53,13 @@ void SPI_Start(u32 device, u32 speed)
 
 void SPI_Finish()
 {
-    //*irqlog++ = 0x9A000000;
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_CS_MASK) | SPI_CSMODE_MANUAL | SPI_CS_RELEASE;
-    //REG_SPI_CNT = (REG_SPI_CNT & ~0x702) | 0x300;
-    /**(vu32*)0xF0004424 = 1;
-
-    *(vu32*)0xF0004400 = 0x808C;
-    *(vu32*)0xF00050FC = 0xC300;*/
 }
 
+extern volatile int irqnum;
 void SPI_Read(u8* buf, int len)
 {
-    //*irqlog++ = 0x78000000;
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_READ;
-    //REG_SPI_CNT = (REG_SPI_CNT & ~0x702) | SPI_CSMODE_MANUAL | SPI_CS_SELECT | SPI_DIR_READ;
 
     SPI_IRQStatus &= ~SPI_IRQ_READ;
     REG_SPI_IRQ_ENABLE |= SPI_IRQ_READ;
@@ -95,15 +83,31 @@ void SPI_Read(u8* buf, int len)
             buf[i++] = REG_SPI_DATA;
     }
 
+    /*REG_SPI_READ_LEN = len;
+
+    irqnum = 0;
+    *(vu32*)0xF0004044 = (2<<1); // must be 2
+    *(vu32*)0xF0004048 = 0; //??
+    *(vu32*)0xF000404C = 0; //??
+    *(vu32*)0xF0004050 = len - 1;
+    *(vu32*)0xF0004054 = (u32)buf;
+    *(vu32*)0xF0004040 = 1;
+
+    while (!(SPI_IRQStatus & SPI_IRQ_READ))
+        WaitForIRQ();
+
+    //while (*(vu32*)0xF0004040 & 1);
+    while (!irqnum) WaitForIRQ();
+
+    *(vu32*)0xF0004040 = 2;*/
+
     REG_SPI_READ_LEN = 0;
     REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_READ;
 }
 
 void SPI_Write(u8* buf, int len)
 {
-    //*irqlog++ = 0x56000000;
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
-    //REG_SPI_CNT = (REG_SPI_CNT & ~0x702) | SPI_CSMODE_MANUAL | SPI_CS_SELECT | SPI_DIR_WRITE;
 
     SPI_IRQStatus &= ~SPI_IRQ_WRITE;
     REG_SPI_IRQ_ENABLE |= SPI_IRQ_WRITE;
@@ -128,6 +132,22 @@ void SPI_Write(u8* buf, int len)
         while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
             WaitForIRQ();
     }
+
+    /*irqnum = 0;
+    *(vu32*)0xF0004044 = 1 | (2<<1); // must be 2
+    *(vu32*)0xF0004048 = 0; //??
+    *(vu32*)0xF000404C = 0; //??
+    *(vu32*)0xF0004050 = len - 1;
+    *(vu32*)0xF0004054 = (u32)buf;
+    *(vu32*)0xF0004040 = 1;
+
+    //while (*(vu32*)0xF0004040 & 1);
+    while (!irqnum) WaitForIRQ();
+
+    while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
+        WaitForIRQ();
+
+    *(vu32*)0xF0004040 = 2;*/
 
     REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_WRITE;
 }
