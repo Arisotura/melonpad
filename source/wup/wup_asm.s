@@ -37,6 +37,15 @@ WaitForIRQ:
     mcr p15, 0, r0, c7, c0, 4
     bx lr
 
+.global IsInIRQ
+IsInIRQ:
+    mrs r0, cpsr
+    and r0, r0, #0x1F
+    cmp r0, #0x12
+    moveq r0, #1
+    movne r0, #0
+    bx lr
+
 
 .global DC_FlushRange
 DC_FlushRange:

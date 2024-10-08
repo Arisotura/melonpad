@@ -16,6 +16,9 @@
 #include "lcd.h"
 #include "gfx.h"
 
+#include "sdio.h"
+#include "wifi.h"
+
 #include "console.h"
 #include "input.h"
 
@@ -23,6 +26,7 @@ void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);
 void WaitForIRQ();
+int IsInIRQ();
 
 void DC_FlushRange(void* addr, int length);
 void DC_InvalidateRange(void* addr, int length);

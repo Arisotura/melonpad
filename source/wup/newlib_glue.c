@@ -37,32 +37,53 @@ int _read(int file, char *ptr, int len)
     return 0;
 }
 
+void _SPI_Write(u8* buf, int len)
+{
+    REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
+
+    for (int i = 0; i < len; i++)
+    {
+        REG_SPI_DATA = buf[i];
+        while (SPI_WRITE_FIFO_LVL == 0);
+    }
+
+    // wait for any leftover contents to be transferred
+    while (SPI_WRITE_FIFO_LVL < 16);
+}
+
 int _write(int file, char *ptr, int len)
 {
     if (file == 1)
     {
+        int irqen = DisableIRQ();
+
         // FPGA debug
-        /*const int csize = 0x3FFF;
-        for (int i = 0; i < len; i += csize)
+        if (1)
         {
-            int chunk = csize;
-            if ((i + chunk) > len)
-                chunk = len - i;
+            const int csize = 0x3FFF;
+            for (int i = 0; i < len; i += csize)
+            {
+                int chunk = csize;
+                if ((i + chunk) > len)
+                    chunk = len - i;
 
-            u16 header = 0x8000 | (chunk & 0x3FFF);
+                u16 header = 0x8000 | (chunk & 0x3FFF);
 
-            u8 buf[3];
-            buf[0] = 0xF2;
-            buf[1] = header >> 8;
-            buf[2] = header & 0xFF;
+                u8 buf[3];
+                buf[0] = 0xF2;
+                buf[1] = header >> 8;
+                buf[2] = header & 0xFF;
 
-            SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-            SPI_Write(buf, 3);
-            SPI_Write((u8*)ptr, len);
-            SPI_Finish();
-        }*/
+                SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+                _SPI_Write(buf, 3);
+                _SPI_Write((u8 *) ptr, chunk);
+                SPI_Finish();
+            }
+        }
+
         Console_Print(ptr, len);
 
+        RestoreIRQ(irqen);
         return len;
     }
     return len;

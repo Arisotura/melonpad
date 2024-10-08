@@ -160,6 +160,8 @@ void WUP_Init()
     GFX_Init();
     LCD_Init();
 
+    //SDIO_Init();
+
     Input_Init();
 }
 
@@ -173,7 +175,11 @@ void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
     IRQTable[irq].handler = handler;
     IRQTable[irq].userdata = userdata;
     IRQTable[irq].priority = prio;
-    WUP_EnableIRQ(irq);
+
+    if (handler)
+        WUP_EnableIRQ(irq);
+    else
+        WUP_DisableIRQ(irq);
 
     RestoreIRQ(irqen);
 }
@@ -228,6 +234,10 @@ void Timer0IRQ(int irq, void* userdata)
 
 void WUP_DelayUS(int us)
 {
+    // TODO: consider halving the timer prescaler, so we can actually
+    // have microsecond precision here
+    if (us < 2) us = 2;
+
     *(vu32*)0xF0000410 = 0;
     Timer0Flag = 0;
     *(vu32*)0xF0000414 = 0;

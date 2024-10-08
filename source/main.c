@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "wup.h"
+#include <wup/wup.h>
 
 
 u32 GetCP15Reg(int cn, int cm, int cp);
@@ -209,6 +209,12 @@ void main()
     send_string(str);*/
 
     printf("printf test: %08X\n", *(vu32*)0xF0000000);
+    // 69EF30B0
+    // 01101001 11101111 00110000 10110000
+    // TODO move this to WUP_Init()
+    SDIO_Init();
+    //Wifi_Init();
+    printf("caps: %08X\n", *(vu32*)0xE0010040);
 
     ((u8*)0x200000)[0] = *(u8*)0x3FFFFC;
 
@@ -261,13 +267,13 @@ void main()
 
         sInputData* test = Input_Scan();
 
-        if (test->ButtonsPressed & BTN_A)
+        if (test->ButtonsDown & BTN_A)
             printf("Pressed A! frame=%d\n", frame);
         if (test->ButtonsPressed & BTN_B)
             printf("Pressed B! frame=%d\n", frame);
-        if (test->ButtonsPressed & BTN_UP)
+        if (test->ButtonsDown & BTN_UP)
             printf("Pressed UP! frame=%d,\nthis is a multi-line printf\nI like it\n", frame);
-        if (test->ButtonsPressed & BTN_DOWN)
+        if (test->ButtonsDown & BTN_DOWN)
             printf("Pressed DOWN! this is going to be a really long line, the point is to test how far the console thing can go and whether it handles this correctly\n");
 
 #if 0

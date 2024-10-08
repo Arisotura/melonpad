@@ -67,10 +67,12 @@ endif
 # SOURCES is a list of directories containing source code
 # INCLUDES is a list of directories containing extra header files
 #---------------------------------------------------------------------------------
+SOURCEDIRS	:= ${shell find source -type d -print}
+
 TARGET		:=	$(shell basename $(CURDIR))
 BUILD		:=	build
-SOURCES		:=	source data
-INCLUDES	:=	include build
+SOURCES		:=	$(SOURCEDIRS) data
+INCLUDES	:=	source build
 
 #---------------------------------------------------------------------------------
 # options for code generation
