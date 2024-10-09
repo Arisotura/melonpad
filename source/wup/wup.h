@@ -12,6 +12,7 @@
 #include "spi.h"
 #include "i2c.h"
 
+#include "flash.h"
 #include "uic.h"
 #include "lcd.h"
 #include "gfx.h"

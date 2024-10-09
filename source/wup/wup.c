@@ -155,6 +155,7 @@ void WUP_Init()
     SPI_Init();
     I2C_Init();
 
+    Flash_Init();
     UIC_Init();
 
     GFX_Init();

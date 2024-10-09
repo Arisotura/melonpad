@@ -209,6 +209,11 @@ void main()
     send_string(str);*/
 
     printf("printf test: %08X\n", *(vu32*)0xF0000000);
+
+    u32 a, b;
+    int res = Flash_GetEntryInfo("LVC_", &a, &b, NULL);
+    printf("res=%d, %08X %08X\n", res, a, b);
+
     // 69EF30B0
     // 01101001 11101111 00110000 10110000
     // TODO move this to WUP_Init()
