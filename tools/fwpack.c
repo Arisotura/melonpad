@@ -104,11 +104,11 @@ int main(int argc, char** argv)
                argv[i][0], argv[i][1], argv[i][2], argv[i][3],
                (unsigned int)ftell(fout), inputsize);
 
-        for (int i = 0; i < inputsize; i += chunksize)
+        for (int j = 0; j < inputsize; j += chunksize)
         {
             int thischunk = chunksize;
-            if ((i + thischunk) > inputsize)
-                thischunk = inputsize - i;
+            if ((j + thischunk) > inputsize)
+                thischunk = inputsize - j;
 
             fread(tmpbuf, thischunk, 1, fin);
             fwrite(tmpbuf, thischunk, 1, fout);
