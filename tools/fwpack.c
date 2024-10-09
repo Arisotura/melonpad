@@ -1,72 +1,128 @@
-#include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <termios.h>
-#include <unistd.h>
 
 #define chunksize 4096
 unsigned char tmpbuf[chunksize];
 
 int main(int argc, char** argv)
 {
-    if (argc < 3)
+    int argsgood = 1;
+    int hasver = 0;
+    unsigned int version = 0x190C0117;
+
+    if (argc < 3) argsgood = 0;
+    else
     {
-        printf("usage: %s [input] [output]\n", argv[0]);
+        for (int i = 1; i < argc-1; i++)
+        {
+            if (strlen(argv[i]) < 6)
+            {
+                argsgood = 0;
+                break;
+            }
+
+            if (argv[i][4] != '=')
+            {
+                argsgood = 0;
+                break;
+            }
+
+            if (!strncmp(argv[i], "VER_", 4))
+            {
+                hasver = 1;
+                sscanf(argv[i], "VER_=%x", &version);
+            }
+        }
+    }
+
+    if (!argsgood)
+    {
+        printf("usage: %s [VER_=version] AAAA=inputA [BBBB=inputB ...] output\n", argv[0]);
         return 0;
     }
 
-    FILE* fin = fopen(argv[1], "rb");
-    if (!fin)
-    {
-        printf("error: failed to open input file %s\n", argv[1]);
-        return -1;
-    }
+    char* outfile = argv[argc-1];
 
-    FILE* fout = fopen(argv[2], "wb");
+    int numentries = argc - 2;
+    if (!hasver) numentries++;
+    numentries++;
+    printf("creating %d entries\n", numentries);
+
+    unsigned int* header = (unsigned int*)malloc(numentries * 16);
+    header[0] = 0;
+    header[1] = numentries * 16;
+    header[2] = 0x58444E49; // INDX
+    header[3] = 0;
+
+    header[4] = header[1];
+    header[5] = 4;
+    header[6] = 0x5F524556; // VER_
+    header[7] = 0;
+
+    FILE* fout = fopen(outfile, "wb");
     if (!fout)
     {
-        printf("error: failed to create output file %s\n", argv[2]);
-        fclose(fin);
+        printf("error: failed to create output file %s\n", outfile);
         return -1;
     }
 
-    int inputsize;
-    fseek(fin, 0, SEEK_END);
-    inputsize = ftell(fin);
-    fseek(fin, 0, SEEK_SET);
-
-    unsigned int header[7*4] = {
-        0x00000000, 0x00000070, 0x58444E49, 0x00000000, // INDX
-        0x00000070, 0x00000004, 0x5F524556, 0x00000000, // VER_
-        0x00000074, 0x00000000, 0x5F43564C, 0x00000002, // LVC_
-        0x00000000, 0x00000000, 0x49464957, 0x00000000, // WIFI
-        0x00000000, 0x00000000, 0x5F525245, 0x00000000, // ERR_
-        0x00000000, 0x00000000, 0x5F494D55, 0x00000000, // UMI_
-        0x00000000, 0x00000000, 0x5F474D49, 0x00000000, // IMG_
-    };
-
-    // fix LVC_ length
-    header[2*4 + 1] = inputsize;
-
-    fwrite(header, 7*16, 1, fout);
-
-    unsigned int version = 0x190C0117; // fixme
+    fseek(fout, header[1], SEEK_SET);
+    printf("writing VER_ at %08X: version=%08X\n", (unsigned int)ftell(fout), version);
     fwrite(&version, 4, 1, fout);
 
-    for (int i = 0; i < inputsize; i += chunksize)
+    unsigned int* curhdr = &header[8];
+    for (int i = 1; i < argc-1; i++)
     {
-        int thischunk = chunksize;
-        if ((i + thischunk) > inputsize)
-            thischunk = inputsize - i;
+        if (!strncmp(argv[i], "VER_", 4))
+            continue;
 
-        fread(tmpbuf, thischunk, 1, fin);
-        fwrite(tmpbuf, thischunk, 1, fout);
+        char fname[512];
+        strncpy(fname, &argv[i][5], 511); fname[511] = '\0';
+        FILE* fin = fopen(fname, "rb");
+        if (!fin)
+        {
+            printf("error: failed to open input file %s\n", fname);
+            fclose(fout);
+            remove(outfile);
+            return -1;
+        }
+
+        int inputsize;
+        fseek(fin, 0, SEEK_END);
+        inputsize = ftell(fin);
+        fseek(fin, 0, SEEK_SET);
+
+        unsigned int tag = argv[i][0] | (argv[i][1] << 8) | (argv[i][2] << 16) | (argv[i][3] << 24);
+
+        curhdr[0] = curhdr[-4] + curhdr[-3];
+        curhdr[1] = inputsize;
+        curhdr[2] = tag;
+        curhdr[3] = 0; // TODO: allow setting blob version
+
+        printf("writing %c%c%c%c at %08X: %d bytes\n",
+               argv[i][0], argv[i][1], argv[i][2], argv[i][3],
+               (unsigned int)ftell(fout), inputsize);
+
+        for (int i = 0; i < inputsize; i += chunksize)
+        {
+            int thischunk = chunksize;
+            if ((i + thischunk) > inputsize)
+                thischunk = inputsize - i;
+
+            fread(tmpbuf, thischunk, 1, fin);
+            fwrite(tmpbuf, thischunk, 1, fout);
+        }
+
+        fclose(fin);
+        curhdr += 4;
     }
 
+    fseek(fout, 0, SEEK_SET);
+    fwrite(header, numentries*16, 1, fout);
+
     fclose(fout);
-    fclose(fin);
+    free(header);
 
     return 0;
 }

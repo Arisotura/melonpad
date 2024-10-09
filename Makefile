@@ -189,7 +189,7 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.fw : %.bin
 	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) $< $@
+	$(SILENTCMD)$(FWPACK) LVC_=$< $@
 
 
 -include $(DEPENDS)
