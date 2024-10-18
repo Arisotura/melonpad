@@ -46,6 +46,9 @@ vec_reset:
 	ldr r1, =__bss_end__
 	bl clear_mem
 
+	ldr r3, =__libc_init_array
+	blx r3
+
 	ldr r3, =WUP_Init
 	blx r3
 
@@ -261,3 +264,10 @@ _mmu_l2_4k_loop:
        b mmu_l2_fill_4k            // load new L1 entry if needed
 _mmu_l2_4k_ret:
        bx lr
+
+
+.section ".init"
+
+.globl _init
+_init:
+	bx lr
