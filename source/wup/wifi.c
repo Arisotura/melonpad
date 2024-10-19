@@ -149,22 +149,16 @@ int Wifi_SetUploadState(int state)
     {
         if (!Wifi_AI_SetCore(WIFI_CORE_ARMCM3))
             return 0;
-printf("disabling ARM\n");
+
         Wifi_AI_DisableCore(0);
 
         if (!Wifi_AI_SetCore(WIFI_CORE_SOCRAM))
             return 0;
-printf("resetting SOCRAM\n");
-        Wifi_AI_ResetCore(0, 0);
-        printf("is it up? %d\n", Wifi_AI_IsCoreUp());
 
-        /*u32 darp = 0;
-        int zi = SDIO_ReadF1MemoryBlock(RAMSize - 4, (u8*)&darp, 4);
-        printf("read: darp=%08X zi=%d  %08X\n", darp, zi, REG_SD_PRESENTSTATE);*/
+        Wifi_AI_ResetCore(0, 0);
 
         u32 zero = 0;
         SDIO_WriteF1Memory(RAMSize - 4, (u8*)&zero, 4);
-        printf("RAM is zeroed\n");
     }
     else
     {

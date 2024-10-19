@@ -519,7 +519,6 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
-        if (retries <= 0) printf("CMD_INHIBIT never went low\n");
         if (retries <= 0)
             return 0;
     }
@@ -531,7 +530,6 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         cmdarg |= (1<<26);
 
     int blocksize = (func == 2) ? 512 : 64;
-    printf("SDIO_WriteCardData(%d, %08X, %08X, %08X, %d)\n", func, addr, (u32)data, len, incr_addr);
 
     if (len >= blocksize)
     {
@@ -569,7 +567,6 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     while (REG_SD_PRESENTSTATE & SD_PRES_DAT_INHIBIT)
     {
         retries--;
-        if (retries <= 0) printf("DAT_INHIBIT never went low\n");
         if (retries <= 0)
             return 0;
     }
@@ -587,7 +584,6 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 
     u32 resp;
     SDIO_ReadResponse(&resp, 1);
-    if ((resp & 0xFF00) != 0x1000) printf("??? %08X\n", resp);
     if ((resp & 0xFF00) != 0x1000)
         return 0;
 
@@ -619,14 +615,10 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     }
 
     // TODO wait for IRQ
-    printf("waiting for final IRQ\n");
-    //WUP_DelayMS(20);
-    //printf("IRQ=%04X/%04X\n", REG_SD_IRQSTATUS, REG_SD_EIRQSTATUS);
     for (;;)
     {
         u16 irq = REG_SD_IRQSTATUS;
-        //if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
-        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA)))
+        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
             continue;
 
         if (irq & SD_IRQ_ERROR)

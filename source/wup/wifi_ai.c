@@ -97,18 +97,6 @@ int Wifi_AI_Enumerate()
     u32 eromptr = 0;
     SDIO_ReadF1Memory(0x180000FC, (u8*)&eromptr, 4);
 
-    printf("EROM ptr = %08X\n", eromptr);
-    // EROM ptr = 18109000
-
-    /*for (int i = 0; i < 0xE00; i+=4)
-    {
-        SDIO_ReadF1Memory(eromptr+i, (u8*)(0x300000+i), 4);
-    }
-    void dump_data(u8* data, int len);
-    printf("dumping\n");
-    dump_data((u8*)0x300000, 0xE00);
-    printf("dumped\n");*/
-
     NumCores = 0;
     u32 eromend = eromptr + 0xE00;
     while (eromptr < eromend)
@@ -273,36 +261,10 @@ u32 Wifi_AI_GetRAMSize()
 
     int wasup = Wifi_AI_IsCoreUp();
     if (!wasup) Wifi_AI_ResetCore(0, 0);
-    printf("is SOCRAM core up? %d\n", Wifi_AI_IsCoreUp());
 
     u32 rev = (CurCore->CIb >> 24) & 0xFF;
     u32 info = 0;
     SDIO_ReadF1Memory(CurCore->MemBase+0x000, (u8*)&info, 4);
-
-    printf("SOCRAM core: rev=%02X info=%08X\n", rev, info);
-
-    /*u32 zart = 0;
-    SDIO_ReadF1Memory(CurCore->MemBase+0x1E8, (u8*)&zart, 4);
-    printf("PMU SHIT = %08X\n", zart);
-    zart = 0;
-    SDIO_ReadF1Memory(CurCore->MemBase+0x4, (u8*)&zart, 4);
-    printf("BWALLOC = %08X\n", zart);
-    zart = 0;
-    SDIO_ReadF1Memory(CurCore->MemBase+0x14, (u8*)&zart, 4);
-    printf("STBYCTRL = %08X\n", zart);
-    zart = 0;
-    SDIO_ReadF1Memory(CurCore->MemBase+0xC, (u8*)&zart, 4);
-    printf("BIST = %08X\n", zart);*/
-
-    /*zart = 0;
-    SDIO_ReadF1Memory(0x47FFC, (u8*)&zart, 4);
-    printf("dddd = %08X\n", zart);*/
-
-    /*
-     *  SOCRAM core: rev=06 info=00258033
-        PMU SHIT = 00000011
-        STBYCTRL = 20FFFFFF
-     */
 
     u32 ret;
     if (rev == 0)
@@ -343,21 +305,6 @@ int Wifi_AI_SetCore(u32 coreid)
         if (core->CoreID == coreid)
         {
             CurCore = core;
-            printf("setting core to %03X, rev=%d\n", coreid, (core->CIb >> 24) & 0xFF);
-
-            /*for (int j = 0; j < NumCores; j++)
-            {
-                u32 base = CoreInfo[j].WrapperBase;
-
-                u32 a = 0, b=0, c=0, d=0;
-                SDIO_ReadF1Memory(base+0x408, (u8*)&a, 4);
-                SDIO_ReadF1Memory(base+0x800, (u8*)&b, 4);
-                SDIO_ReadF1Memory(base+0x804, (u8*)&c, 4);
-                SDIO_ReadF1Memory(base+0x500, (u8*)&d, 4);
-
-                printf("core%d: %03X, base=%08X, IOCTRL=%08X, RESET=%08X STAT=%08X DERP=%08X\n",
-                       j, CoreInfo[j].CoreID, base, a, b, c, d);
-            }*/
             return 1;
         }
     }
@@ -374,15 +321,11 @@ int Wifi_AI_IsCoreUp()
 {
     u32 regval = 0;
 
-    printf("Wifi_AI_IsCoreUp(): cur=%03X mem=%08X wrap=%08X\n", CurCore->CoreID, CurCore->MemBase,CurCore->WrapperBase);
-
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    printf("%08X / ioctrl=%08X\n", CurCore->WrapperBase, regval);
     if ((regval & 0x03) != 0x01)
         return 0;
 
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    printf("reset=%08X\n", regval);
     if (regval & (1<<0)) // already in reset
         return 0;
 
@@ -391,88 +334,37 @@ int Wifi_AI_IsCoreUp()
 
 void Wifi_AI_DisableCore(u32 ctrl)
 {
-    printf("Wifi_AI_DisableCore(%03X, %08X)\n", CurCore->CoreID, ctrl);
-
-    u32 fart = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&fart, 4);
-
     u32 regval = 0;
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    printf("DIS: CORE %03X OLD RESET=%08X IOCTRL=%08X\n", CurCore->CoreID, regval, fart);
     if (regval & (1<<0)) // already in reset
         return;
 
     regval = ctrl;
     SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    //regval = ~ctrl;
-    //SDIO_WriteF1Memory(CurCore->WrapperBase+0x404, (u8*)&regval, 4);
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    WUP_DelayUS(10);
+    WUP_DelayUS(1);
 
     regval = (1<<0); // reset
     SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
     WUP_DelayUS(1);
-
-    //WUP_DelayMS(50);
-    fart = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&fart, 4);
-    regval = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    printf("DIS: CORE %03X NEW RESET=%08X IOCTRL=%08X\n", CurCore->CoreID, regval, fart);
 }
 
 void Wifi_AI_ResetCore(u32 ctrl, u32 resetctrl)
 {
-    printf("Wifi_AI_ResetCore(%03X, %08X, %08X)\n", CurCore->CoreID, ctrl, resetctrl);
-
     u32 regval = 0;
-    u32 fart = 0;
-
-    fart = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&fart, 4);
-    regval = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    printf("RES: CORE %03X OLD RESET=%08X IOCTRL=%08X\n", CurCore->CoreID, regval, fart);
 
     Wifi_AI_DisableCore(ctrl | resetctrl);
 
     regval = ctrl | (1<<0) | (1<<1);
-    //SDIO_WriteF1Memory(CurCore->WrapperBase+0x400, (u8*)&regval, 4);
     SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    printf("1. ioctrl=%08X\n", regval);
+
     regval = 0;
     SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    WUP_DelayUS(100);
+    WUP_DelayUS(1);
 
     regval = ctrl | (1<<0);
     SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    //regval = (1<<1);
-    //SDIO_WriteF1Memory(CurCore->WrapperBase+0x404, (u8*)&regval, 4);
     SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    printf("2. ioctrl=%08X\n", regval);
-    WUP_DelayUS(100);
-
-    fart = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&fart, 4);
-    regval = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
-    printf("RES: CORE %03X NEW RESET=%08X IOCTRL=%08X\n", CurCore->CoreID, regval, fart);
-    /*regval = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x500, (u8*)&regval, 4);
-    printf("resetstatus=%08X\n", regval);*/
-
-    /*for (int i = 0; i < NumCores; i++)
-    {
-        u32 base = CoreInfo[i].WrapperBase;
-
-        u32 a = 0, b=0, c=0, d=0;
-        SDIO_ReadF1Memory(base+0x408, (u8*)&a, 4);
-        SDIO_ReadF1Memory(base+0x800, (u8*)&b, 4);
-        SDIO_ReadF1Memory(base+0x804, (u8*)&c, 4);
-        SDIO_ReadF1Memory(base+0x500, (u8*)&d, 4);
-
-        printf("core%d: %03X, base=%08X, IOCTRL=%08X, RESET=%08X STAT=%08X DERP=%08X\n",
-               i, CoreInfo[i].CoreID, base, a, b, c, d);
-    }*/
+    WUP_DelayUS(1);
 }
