@@ -12,6 +12,8 @@ static u32 SD_RCA;
 static u8 SD_NumFuncs;
 static u32 SD_CISPtr[7];
 
+static u32 SD_F1Base;
+
 
 int SDIO_Init()
 {
@@ -60,8 +62,11 @@ int SDIO_Init()
     if (!SDIO_WriteCardRegs(0, 0x2, 1, &val))
         return 0;
 
-    u16 chipid = 0;
-    SDIO_ReadCardRegs(1, 0x8000, 2, (u8*)&chipid);
+    SD_F1Base = 0;
+    SDIO_SetF1Base(0x18000000);
+
+    /*u16 chipid = 0;
+    SDIO_ReadCardRegs(1, 0x0, 2, (u8*)&chipid);
 
     // verify the chip ID
     // these are the chip IDs the stock firmware supports
@@ -76,26 +81,37 @@ int SDIO_Init()
         return 0;
     }
 
-    printf("SDIO: chip ID %04X\n", chipid);
+    printf("SDIO: chip ID %04X\n", chipid);*/
 
     for (int i = 0; i <= SD_NumFuncs; i++)
         printf("F%d: %05X\n", i, SD_CISPtr[i]);
 
+    // WORKS HERE
+
     SDIO_SetBusWidth(4);
+
+    // BORK HERE
+    /*u32 a = 0;
+    SDIO_ReadF1MemoryBlock(0x18000000, (u8*)&a, 4);
+    printf("READ SIGNATURE: b=%08X\n", a);*/
 
     u16 blocksize = 64;
     SDIO_WriteCardRegs(0, 0x110, 2, (u8*)&blocksize);
     if (SD_NumFuncs > 1)
     {
-        blocksize = 512;
+        blocksize = 64;//512;
         SDIO_WriteCardRegs(0, 0x210, 2, (u8*)&blocksize);
     }
+
+    // BORK HERE
 
     u8 fn_ints = (1<<0);
     fn_ints |= (1<<1); // F1
     if (SD_NumFuncs > 1)
         fn_ints |= (1<<2); // F2
     SDIO_WriteCardRegs(0, 0x4, 1, &fn_ints);
+
+    // BORK HERE
 
     if (SD_Caps & SD_CAP_HISPEED)
     {
@@ -109,6 +125,7 @@ int SDIO_Init()
 
             speedcnt |= (1<<1); // enable hi-speed
             SDIO_WriteCardRegs(0, 0x13, 1, &speedcnt);
+            SDIO_ReadCardRegs(0, 0x13, 1, &speedcnt);
 
             hostcnt |= (1<<2);
         }
@@ -118,8 +135,19 @@ int SDIO_Init()
         REG_SD_HOSTCNT = hostcnt;
     }
 
+    // here, bork entirely
+
     // fasterer clock
-    if (!SDIO_EnableClock(2)) return 0;
+    if (!SDIO_EnableClock(1)) return 0;
+
+    // works here if len=5??
+    /*u32 a = 0;
+    SDIO_ReadF1MemoryBlock(0x18000000, (u8*)&a, 4);
+    printf("READ SIGNATURE: b=%08X\n", a);*/
+
+    val = 0;
+    SDIO_ReadCardRegs(1, 0x10009, 1, (u8*)&val);
+    printf("ISO FARTO = %02X\n", val);
 
     return 1;
 }
@@ -127,7 +155,7 @@ int SDIO_Init()
 void SDIO_IRQHandler(int irq, void* userdata)
 {
     // TODO.
-    printf("SDIO: IRQ, %04X %04X\n", REG_SD_IRQSTATUS, REG_SD_EIRQSTATUS);
+    //printf("SDIO: IRQ, %04X %04X\n", REG_SD_IRQSTATUS, REG_SD_EIRQSTATUS);
 }
 
 
@@ -136,6 +164,7 @@ int SDIO_EnableClock(u16 div)
     REG_SD_CLOCKCNT &= ~(1<<2);
 
     u16 div_reg = (div >> 1) << 8;
+    printf("div=%d div_reg=%04X reg=%04X\n", div, div_reg, (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00));
     REG_SD_CLOCKCNT = (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00);
 
     REG_SD_CLOCKCNT |= (1<<0);
@@ -150,12 +179,20 @@ int SDIO_EnableClock(u16 div)
         timeout--;
         div >>= 1;
     }
+    printf("clock timeout = %04X\n", timeout);
 
     u16 eintenable = REG_SD_EIRQSTATUSENABLE;
     REG_SD_EIRQSTATUSENABLE = eintenable & ~SD_EIRQ_DATA_TIMEOUT;
     REG_SD_TIMEOUTCNT = timeout;
     REG_SD_EIRQSTATUSENABLE = eintenable;
 
+    WUP_DelayUS(2);
+    return 1;
+}
+
+int SDIO_DisableClock()
+{
+    REG_SD_CLOCKCNT &= ~(1<<2);
     WUP_DelayUS(2);
     return 1;
 }
@@ -182,7 +219,36 @@ int SDIO_EnablePower()
         return 0;
 
     printf("OCR=%08X funcs=%d\n", ocr_resp, SD_NumFuncs);
+    SDIO_GetOCR(0xFFF000, &ocr_resp);
+    printf("OCR2=%08X\n", ocr_resp);
     return 1;
+}
+
+int SDIO_SetClocks(int sdclk, int htclk)
+{
+    if (sdclk)
+        SDIO_EnableClock(1);
+
+    if (htclk)
+    {
+        u8 clkreg = 0x08; // TODO: 0x10 for HT clock, decide when we use it
+        SDIO_WriteCardRegs(1, 0x1000E, 1, &clkreg);
+        for (;;)
+        {
+            SDIO_ReadCardRegs(1, 0x1000E, 1, &clkreg);
+            if (clkreg & 0x40)
+                break;
+        }
+        printf("clock enable: %02X\n", clkreg);
+    }
+    else
+    {
+        u8 clkreg = 0;
+        SDIO_WriteCardRegs(1, 0x1000E, 1, &clkreg);
+    }
+
+    if (!sdclk)
+        SDIO_DisableClock();
 }
 
 int SDIO_SendCommand(u32 cmd, u32 arg)
@@ -191,6 +257,7 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
+        if (retries <= 0) printf("CMD%d: CMD_INHIBIT never went low (%08X)\n", cmd, REG_SD_PRESENTSTATE);
         if (retries <= 0)
             return 0;
     }
@@ -253,7 +320,9 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
         if (!(irq & (SD_IRQ_ERROR | SD_IRQ_CMD_DONE)))
             continue;
 
-        REG_SD_IRQSTATUS |= SD_IRQ_CMD_DONE;
+        //printf("CMD%d: IRQ=%04X EIRQ=%04X\n", cmd, irq, REG_SD_EIRQSTATUS);
+
+        REG_SD_IRQSTATUS = SD_IRQ_CMD_DONE;
         break;
     }
 
@@ -314,7 +383,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
         u32 resp;
         SDIO_ReadResponse(&resp, 1);
         if ((resp & 0xFF00) != 0x1000)
-            printf("SDIO_ReadCardRegs: ??? resp=%08X\n", resp);
+            printf("SDIO_WriteCardRegs: ??? resp=%08X\n", resp);
 
         addr++;
     }
@@ -322,7 +391,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
     return 1;
 }
 
-int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int incr_addr)
+int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
@@ -334,23 +403,31 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
             return 0;
     }
 
-    REG_SD_SYSADDR = (u32)data;
-
-    u32 cmdarg = (0 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9) | (len & 0x1FF);
-    u16 xfermode = (1<<0); // read
+    u32 cmdarg = (0 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9);
+    u16 xfermode = (1<<4); // read
 
     if (incr_addr)
         cmdarg |= (1<<26);
 
-    if (blockmode)
+    int blocksize = (func == 2) ? 512 : 64;
+
+    if (len >= blocksize)
     {
+        if (len & (blocksize-1))
+            return 0;
+
+        int blocknum = len >> ((func == 2) ? 9 : 6);
+        if (blocknum > 0x200)
+            return 0;
+
         cmdarg |= (1<<27); // block mode
 
-        REG_SD_BLOCKSIZE = (func == 2) ? 512 : 64;
-        REG_SD_BLOCKCOUNT = len;
+        REG_SD_BLOCKSIZE = blocksize | 0x7000;
+        REG_SD_BLOCKCOUNT = blocknum;
+        cmdarg |= (blocknum & 0x1FF);
 
-        xfermode |= (1<<4); // DMA enable
-        if (len > 1)
+        xfermode |= (1<<0); // DMA enable
+        if (blocknum > 1)
         {
             xfermode |= (1<<5); // multiple blocks
             xfermode |= (1<<1); // block count enable
@@ -358,11 +435,12 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
     }
     else
     {
-        REG_SD_BLOCKSIZE = len;
+        REG_SD_BLOCKSIZE = len | 0x7000;
         REG_SD_BLOCKCOUNT = 1;
+        cmdarg |= (len & 0x1FF);
 
-        if (!(len & 3))
-            xfermode |= (1<<4);
+        //if (len > 4)
+        //    xfermode |= (1<<0);
     }
 
     retries = 100;
@@ -373,6 +451,12 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
             return 0;
     }
 
+    if (xfermode & (1<<0))
+    {
+        DC_InvalidateRange(data, len);
+        REG_SD_SYSADDR = (u32)data;
+    }
+
     REG_SD_TRANSFERMODE = xfermode;
 
     if (!SDIO_SendCommand(53, cmdarg))
@@ -381,9 +465,9 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
     u32 resp;
     SDIO_ReadResponse(&resp, 1);
     if ((resp & 0xFF00) != 0x1000)
-        printf("SDIO_ReadCardRegs: ??? resp=%08X\n", resp);
+        return 0;
 
-    if (!(xfermode & (1<<4)))
+    if (!(xfermode & (1<<0)))
     {
         // TODO wait for IRQ
         for (;;)
@@ -392,7 +476,10 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
             if (!(irq & (SD_IRQ_ERROR | SD_IRQ_READ_READY)))
                 continue;
 
-            REG_SD_IRQSTATUS |= SD_IRQ_READ_READY;
+            if (irq & SD_IRQ_ERROR)
+                return 0;
+
+            REG_SD_IRQSTATUS = SD_IRQ_READ_READY;
             break;
         }
 
@@ -407,21 +494,24 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int blockmode, int 
             data[i*4+2] = REG_SD_DATAPORT8;
     }
 
-    // TODO wait for IRQ, and error checking
+    // TODO wait for IRQ
     for (;;)
     {
         u16 irq = REG_SD_IRQSTATUS;
         if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
             continue;
 
-        REG_SD_IRQSTATUS |= SD_IRQ_TRANSFER_DONE;
+        if (irq & SD_IRQ_ERROR)
+            return 0;
+
+        REG_SD_IRQSTATUS = SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA;
         break;
     }
 
     return 1;
 }
 
-int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int incr_addr)
+int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
@@ -429,27 +519,37 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
+        if (retries <= 0) printf("CMD_INHIBIT never went low\n");
         if (retries <= 0)
             return 0;
     }
 
-    REG_SD_SYSADDR = (u32)data;
-
-    u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9) | (len & 0x1FF);
-    u16 xfermode = (0<<0); // write
+    u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9);
+    u16 xfermode = (0<<4); // write
 
     if (incr_addr)
         cmdarg |= (1<<26);
 
-    if (blockmode)
+    int blocksize = (func == 2) ? 512 : 64;
+    printf("SDIO_WriteCardData(%d, %08X, %08X, %08X, %d)\n", func, addr, (u32)data, len, incr_addr);
+
+    if (len >= blocksize)
     {
+        if (len & (blocksize-1))
+            return 0;
+
+        int blocknum = len >> ((func == 2) ? 9 : 6);
+        if (blocknum > 0x200)
+            return 0;
+
         cmdarg |= (1<<27); // block mode
 
-        REG_SD_BLOCKSIZE = (func == 2) ? 512 : 64;
-        REG_SD_BLOCKCOUNT = len;
+        REG_SD_BLOCKSIZE = blocksize | 0x7000;
+        REG_SD_BLOCKCOUNT = blocknum;
+        cmdarg |= (blocknum & 0x1FF);
 
-        xfermode |= (1<<4); // DMA enable
-        if (len > 1)
+        xfermode |= (1<<0); // DMA enable
+        if (blocknum > 1)
         {
             xfermode |= (1<<5); // multiple blocks
             xfermode |= (1<<1); // block count enable
@@ -457,19 +557,27 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int
     }
     else
     {
-        REG_SD_BLOCKSIZE = len;
+        REG_SD_BLOCKSIZE = len | 0x7000;
         REG_SD_BLOCKCOUNT = 1;
+        cmdarg |= (len & 0x1FF);
 
-        if (!(len & 3))
-            xfermode |= (1<<4);
+        //if (len > 4)
+        //    xfermode |= (1<<0);
     }
 
     retries = 100;
     while (REG_SD_PRESENTSTATE & SD_PRES_DAT_INHIBIT)
     {
         retries--;
+        if (retries <= 0) printf("DAT_INHIBIT never went low\n");
         if (retries <= 0)
             return 0;
+    }
+
+    if (xfermode & (1<<0))
+    {
+        DC_FlushRange(data, len);
+        REG_SD_SYSADDR = (u32)data;
     }
 
     REG_SD_TRANSFERMODE = xfermode;
@@ -479,10 +587,11 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int
 
     u32 resp;
     SDIO_ReadResponse(&resp, 1);
+    if ((resp & 0xFF00) != 0x1000) printf("??? %08X\n", resp);
     if ((resp & 0xFF00) != 0x1000)
-        printf("SDIO_ReadCardRegs: ??? resp=%08X\n", resp);
+        return 0;
 
-    if (!(xfermode & (1<<4)))
+    if (!(xfermode & (1<<0)))
     {
         // TODO wait for IRQ
         for (;;)
@@ -491,7 +600,10 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int
             if (!(irq & (SD_IRQ_ERROR | SD_IRQ_WRITE_READY)))
                 continue;
 
-            REG_SD_IRQSTATUS |= SD_IRQ_WRITE_READY;
+            if (irq & SD_IRQ_ERROR)
+                return 0;
+
+            REG_SD_IRQSTATUS = SD_IRQ_WRITE_READY;
             break;
         }
 
@@ -506,14 +618,21 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int blockmode, int
             REG_SD_DATAPORT8 = data[i*4+2];
     }
 
-    // TODO wait for IRQ, and error checking
+    // TODO wait for IRQ
+    printf("waiting for final IRQ\n");
+    //WUP_DelayMS(20);
+    //printf("IRQ=%04X/%04X\n", REG_SD_IRQSTATUS, REG_SD_EIRQSTATUS);
     for (;;)
     {
         u16 irq = REG_SD_IRQSTATUS;
-        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
+        //if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
+        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA)))
             continue;
 
-        REG_SD_IRQSTATUS |= SD_IRQ_TRANSFER_DONE;
+        if (irq & SD_IRQ_ERROR)
+            return 0;
+
+        REG_SD_IRQSTATUS = SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA;
         break;
     }
 
@@ -538,4 +657,71 @@ void SDIO_SetBusWidth(int width)
         regval |= 0x2; // 4-bit bus
 
     REG_SD_HOSTCNT = regval;
+}
+
+int SDIO_SetF1Base(u32 addr)
+{
+    addr &= 0xFFFF8000;
+    if (addr == SD_F1Base)
+        return 1;
+
+    u8 addrparts[3];
+    addrparts[0] = (addr >> 8) & 0x80;
+    addrparts[1] = (addr >> 16) & 0xFF;
+    addrparts[2] = (addr >> 24) & 0xFF;
+    if (!SDIO_WriteCardRegs(1, 0x1000A, 3, addrparts))
+        return 0;
+
+    SD_F1Base = addr;
+    return 1;
+}
+
+int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
+{
+    for (int i = 0; i < len; )
+    {
+        int chunk = len - i;
+        u32 sdaddr = addr & 0x7FFF;
+        if ((sdaddr + chunk) > 0x8000)
+            chunk = 0x8000 - sdaddr;
+        if (chunk > 64)
+            chunk &= ~0x3F;
+
+        if (!SDIO_SetF1Base(addr))
+            return 0;
+
+        if (!SDIO_ReadCardData(1, sdaddr | 0x8000, data, chunk, 1))
+            return 0;
+
+        i += chunk;
+        addr += chunk;
+        data += chunk;
+    }
+
+    return 1;
+}
+
+int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
+{
+    for (int i = 0; i < len; )
+    {
+        int chunk = len - i;
+        u32 sdaddr = addr & 0x7FFF;
+        if ((sdaddr + chunk) > 0x8000)
+            chunk = 0x8000 - sdaddr;
+        if (chunk > 64)
+            chunk &= ~0x3F;
+
+        if (!SDIO_SetF1Base(addr))
+            return 0;
+
+        if (!SDIO_WriteCardData(1, sdaddr | 0x8000, data, chunk, 1))
+            return 0;
+
+        i += chunk;
+        addr += chunk;
+        data += chunk;
+    }
+
+    return 1;
 }

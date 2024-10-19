@@ -19,6 +19,7 @@
 
 #include "sdio.h"
 #include "wifi.h"
+#include "wifi_ai.h"
 
 #include "console.h"
 #include "input.h"

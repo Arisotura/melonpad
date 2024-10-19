@@ -1,6 +1,8 @@
-#ifndef _WIFI_H
-#define _WIFI_H
+#ifndef _WIFI_H_
+#define _WIFI_H_
 
 int Wifi_Init();
 
-#endif // _WIFI_H
+int Wifi_UploadFirmware();
+
+#endif // _WIFI_H_

@@ -93,7 +93,7 @@ void send_binary(u8* data, int len)
     buf[1] = header >> 8;
     buf[2] = header & 0xFF;
 
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
@@ -127,7 +127,7 @@ void dump_data(u8* data, int len)
     buf[1] = header >> 8;
     buf[2] = header & 0xFF;
 
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
@@ -210,16 +210,31 @@ void main()
 
     printf("printf test: %08X\n", *(vu32*)0xF0000000);
 
+    //*(vu32*)0xF0000800 |= 0x1000010;
+    //*(vu32*)0xF0000038 = 0xFE;
+
     u32 a, b;
     int res = Flash_GetEntryInfo("LVC_", &a, &b, NULL);
     printf("res=%d, %08X %08X\n", res, a, b);
+
+    /*for (;;)
+    {
+        u8 fark;
+        UIC_SendCommand(0x13, NULL, 0, &fark, 1);
+        WUP_DelayMS(5);
+        if (fark != 1) continue;
+        printf("UIC13=%02X\n", fark);
+        break;
+    }*/
 
     // 69EF30B0
     // 01101001 11101111 00110000 10110000
     // TODO move this to WUP_Init()
     SDIO_Init();
-    //Wifi_Init();
+    Wifi_Init();
     printf("caps: %08X\n", *(vu32*)0xE0010040);
+
+    //dump_data((u8*)0x200000, 0xE00);
 
     ((u8*)0x200000)[0] = *(u8*)0x3FFFFC;
 

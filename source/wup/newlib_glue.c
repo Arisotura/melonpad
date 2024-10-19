@@ -74,7 +74,7 @@ int _write(int file, char *ptr, int len)
                 buf[1] = header >> 8;
                 buf[2] = header & 0xFF;
 
-                SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+                SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
                 _SPI_Write(buf, 3);
                 _SPI_Write((u8 *) ptr, chunk);
                 SPI_Finish();

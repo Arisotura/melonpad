@@ -189,7 +189,7 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.fw : %.bin
 	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) LVC_=$< $@
+	$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
 
 
 -include $(DEPENDS)
