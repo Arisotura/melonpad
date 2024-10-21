@@ -1,6 +1,15 @@
 #ifndef _SDIO_H_
 #define _SDIO_H_
 
+#define SDIO_CLOCK_FORCE_ALP        (1<<0)
+#define SDIO_CLOCK_FORCE_HT         (1<<1)
+#define SDIO_CLOCK_FORCE_ILP        (1<<2)
+#define SDIO_CLOCK_REQ_ALP          (1<<3)
+#define SDIO_CLOCK_REQ_HT           (1<<4)
+#define SDIO_CLOCK_FORCE_HWREQ_OFF  (1<<5)
+#define SDIO_CLOCK_ALP_AVAIL        (1<<6)
+#define SDIO_CLOCK_HT_AVAIL         (1<<7)
+
 int SDIO_Init();
 
 int SDIO_EnableClock(u16 div);

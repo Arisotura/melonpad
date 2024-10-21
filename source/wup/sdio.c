@@ -86,14 +86,7 @@ int SDIO_Init()
     for (int i = 0; i <= SD_NumFuncs; i++)
         printf("F%d: %05X\n", i, SD_CISPtr[i]);
 
-    // WORKS HERE
-
     SDIO_SetBusWidth(4);
-
-    // BORK HERE
-    /*u32 a = 0;
-    SDIO_ReadF1MemoryBlock(0x18000000, (u8*)&a, 4);
-    printf("READ SIGNATURE: b=%08X\n", a);*/
 
     u16 blocksize = 64;
     SDIO_WriteCardRegs(0, 0x110, 2, (u8*)&blocksize);
@@ -103,15 +96,11 @@ int SDIO_Init()
         SDIO_WriteCardRegs(0, 0x210, 2, (u8*)&blocksize);
     }
 
-    // BORK HERE
-
     u8 fn_ints = (1<<0);
     fn_ints |= (1<<1); // F1
     if (SD_NumFuncs > 1)
         fn_ints |= (1<<2); // F2
     SDIO_WriteCardRegs(0, 0x4, 1, &fn_ints);
-
-    // BORK HERE
 
     if (SD_Caps & SD_CAP_HISPEED)
     {
@@ -135,19 +124,8 @@ int SDIO_Init()
         REG_SD_HOSTCNT = hostcnt;
     }
 
-    // here, bork entirely
-
     // fasterer clock
     if (!SDIO_EnableClock(1)) return 0;
-
-    // works here if len=5??
-    /*u32 a = 0;
-    SDIO_ReadF1MemoryBlock(0x18000000, (u8*)&a, 4);
-    printf("READ SIGNATURE: b=%08X\n", a);*/
-
-    val = 0;
-    SDIO_ReadCardRegs(1, 0x10009, 1, (u8*)&val);
-    printf("ISO FARTO = %02X\n", val);
 
     return 1;
 }
@@ -161,10 +139,14 @@ void SDIO_IRQHandler(int irq, void* userdata)
 
 int SDIO_EnableClock(u16 div)
 {
+    u16 div_reg = ((div >> 1) & 0xFF) << 8;
+
+    if ((REG_SD_CLOCKCNT & 0xFF04) == (div_reg | (1<<2)))
+        return 1;
+
     REG_SD_CLOCKCNT &= ~(1<<2);
 
-    u16 div_reg = (div >> 1) << 8;
-    printf("div=%d div_reg=%04X reg=%04X\n", div, div_reg, (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00));
+    printf("div=%d div_reg=%04X reg=%04X\n", div, div_reg, (REG_SD_CLOCKCNT & ~0xFF00) | div_reg);
     REG_SD_CLOCKCNT = (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00);
 
     REG_SD_CLOCKCNT |= (1<<0);
@@ -192,6 +174,9 @@ int SDIO_EnableClock(u16 div)
 
 int SDIO_DisableClock()
 {
+    if (!(REG_SD_CLOCKCNT & (1<<2)))
+        return 1;
+
     REG_SD_CLOCKCNT &= ~(1<<2);
     WUP_DelayUS(2);
     return 1;
@@ -226,29 +211,40 @@ int SDIO_EnablePower()
 
 int SDIO_SetClocks(int sdclk, int htclk)
 {
+    if (sdclk) htclk &= 0x3F;
+    else       htclk = 0;
+
     if (sdclk)
         SDIO_EnableClock(1);
 
-    if (htclk)
+    u8 clkstat = 0;
+    SDIO_ReadCardRegs(1, 0x1000E, 1, &clkstat);
+    if (htclk != (clkstat & 0x3F))
     {
-        u8 clkreg = 0x08; // TODO: 0x10 for HT clock, decide when we use it
+        u8 clkreg = htclk;
         SDIO_WriteCardRegs(1, 0x1000E, 1, &clkreg);
-        for (;;)
+        WUP_DelayUS(1);
+
+        clkreg = htclk & 0x18;
+        if (clkreg == SDIO_CLOCK_REQ_ALP ||
+            clkreg == SDIO_CLOCK_REQ_HT)
         {
-            SDIO_ReadCardRegs(1, 0x1000E, 1, &clkreg);
-            if (clkreg & 0x40)
-                break;
+            u8 readybit = (clkreg == SDIO_CLOCK_REQ_HT) ? SDIO_CLOCK_HT_AVAIL : SDIO_CLOCK_ALP_AVAIL;
+            for (;;)
+            {
+                SDIO_ReadCardRegs(1, 0x1000E, 1, &clkreg);
+                if (clkreg & readybit)
+                    break;
+
+                WUP_DelayUS(1);
+            }
         }
-        printf("clock enable: %02X\n", clkreg);
-    }
-    else
-    {
-        u8 clkreg = 0;
-        SDIO_WriteCardRegs(1, 0x1000E, 1, &clkreg);
     }
 
     if (!sdclk)
         SDIO_DisableClock();
+
+    return 1;
 }
 
 int SDIO_SendCommand(u32 cmd, u32 arg)
@@ -257,7 +253,6 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
-        if (retries <= 0) printf("CMD%d: CMD_INHIBIT never went low (%08X)\n", cmd, REG_SD_PRESENTSTATE);
         if (retries <= 0)
             return 0;
     }
@@ -307,9 +302,6 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
         return 0;
     }
 
-    // TODO clear CRC/Index enable if in SPI mode
-    // TODO also check stuff for SPI mode
-
     REG_SD_ARG = arg;
     REG_SD_COMMAND = cmdreg;
 
@@ -320,7 +312,8 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
         if (!(irq & (SD_IRQ_ERROR | SD_IRQ_CMD_DONE)))
             continue;
 
-        //printf("CMD%d: IRQ=%04X EIRQ=%04X\n", cmd, irq, REG_SD_EIRQSTATUS);
+        if (irq & SD_IRQ_ERROR)
+            return 0;
 
         REG_SD_IRQSTATUS = SD_IRQ_CMD_DONE;
         break;

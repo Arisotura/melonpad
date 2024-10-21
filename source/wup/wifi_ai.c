@@ -305,6 +305,7 @@ int Wifi_AI_SetCore(u32 coreid)
         if (core->CoreID == coreid)
         {
             CurCore = core;
+            printf("core: %03X, rev=%d\n", CurCore->CoreID, CurCore->CIb >> 24);
             return 1;
         }
     }

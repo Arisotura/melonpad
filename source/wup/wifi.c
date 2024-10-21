@@ -11,45 +11,20 @@ int Wifi_Init()
 
     u32 regval;
 
-    // dhdsdio_probe_attach
-
-    regval = 0x28;
-    SDIO_WriteCardRegs(1, 0x1000E, 1, (u8*)&regval);
     regval = 0;
-    SDIO_ReadCardRegs(1, 0x1000E, 1, (u8*)&regval);
-    if ((regval & ~0xC0) != 0x28)
-        return 0;
-
-    /*regval = 0;
     SDIO_ReadCardRegs(1, 0x10009, 1, (u8*)&regval);
-    printf("ISO SHITO = %02X\n", regval);*/
-
-    // si_attach
-
-    regval = 0x28;
-    if (SDIO_WriteCardRegs(1, 0x1000E, 1, (u8*)&regval))
+    if (regval & (1<<3))
     {
-        u8 readval;
-        SDIO_ReadCardRegs(1, 0x1000E, 1, &readval);
-        //printf("readval=%02X\n", readval);
-        // reads 68
-        if ((readval & ~0xC0) == regval)
-        {
-            while (!(readval & 0xC0))
-            {
-                SDIO_ReadCardRegs(1, 0x1000E, 1, &readval);
-            }
-
-            regval = 0x21;
-            SDIO_WriteCardRegs(1, 0x1000E, 1, (u8*)&regval);
-            WUP_DelayUS(65);
-        }
+        // clear I/O isolation bit
+        regval &= ~(1<<3);
+        SDIO_WriteCardRegs(1, 0x10009, 1, (u8*)&regval);
     }
+
+    SDIO_SetClocks(1, SDIO_CLOCK_FORCE_HWREQ_OFF | SDIO_CLOCK_REQ_ALP);
+    SDIO_SetClocks(1, SDIO_CLOCK_FORCE_HWREQ_OFF | SDIO_CLOCK_FORCE_ALP);
 
     regval = 0;
     SDIO_WriteCardRegs(1, 0x1000F, 1, (u8*)&regval);
-
-    printf("--- FART ---\n");
 
     if (!Wifi_AI_Enumerate())
         return 0;
@@ -109,39 +84,77 @@ int Wifi_Init()
     regval |= (1<<1);
     SDIO_WriteF1Memory(base+0x000, (u8*)&regval, 4);
 
-    // F1:1000E = 0 then 8 ???
-    // then they turn off ARM and reset SOCRAM
-    // then they write 0 at 47FFC
-
-    // dhdsdio_probe_attach done
-
-    //Wifi_AI_SetCore(0x800);
-    //Wifi_AI_ResetCore(0, 0);
-
     {
         // stupid shit
         u8 val = 0x02; // enable F1
         if (!SDIO_WriteCardRegs(0, 0x2, 1, &val))
             return 0;
-
-        val = 0;
-        if (!SDIO_WriteCardRegs(1, 0x1000E, 1, &val))
-            return 0;
-
-        WUP_DelayMS(5);
-
-        val = 0x08;
-        if (!SDIO_WriteCardRegs(1, 0x1000E, 1, &val))
-            return 0;
     }
+    SDIO_SetClocks(1, 0);
 
     int ret = Wifi_UploadFirmware();
     printf("ret=%d\n", ret);
-    WUP_DelayMS(20);
-    printf("pres=%08X\n", REG_SD_PRESENTSTATE);
 
     return 1;
 }
+
+
+/*
+ * ProcessVars:Takes a buffer of "<var>=<value>\n" lines read from a file and ending in a NUL.
+ * also accepts nvram files which are already in the format of <var1>=<value>\0\<var2>=<value2>\0
+ * Removes carriage returns, empty lines, comment lines, and converts newlines to NULs.
+ * Shortens buffer as needed and pads with NULs.  End of buffer is marked by two NULs.
+*/
+
+unsigned int
+process_nvram_vars(char *varbuf, unsigned int len)
+{
+    char *dp;
+    int findNewline;
+    int column;
+    unsigned int buf_len, n;
+    unsigned int pad = 0;
+
+    dp = varbuf;
+
+    findNewline = 0;
+    column = 0;
+
+    for (n = 0; n < len; n++) {
+        if (varbuf[n] == '\r')
+            continue;
+        if (findNewline && varbuf[n] != '\n')
+            continue;
+        findNewline = 0;
+        if (varbuf[n] == '#') {
+            findNewline = 1;
+            continue;
+        }
+        if (varbuf[n] == '\n') {
+            if (column == 0)
+                continue;
+            *dp++ = 0;
+            column = 0;
+            continue;
+        }
+
+        *dp++ = varbuf[n];
+        column++;
+    }
+    buf_len = (unsigned int)(dp - varbuf);
+    if (buf_len % 4) {
+        pad = 4 - buf_len % 4;
+        if (pad && (buf_len + pad <= len)) {
+            buf_len += pad;
+        }
+    }
+
+    while (dp < varbuf + n)
+        *dp++ = 0;
+
+    return buf_len;
+}
+
 
 int Wifi_SetUploadState(int state)
 {
@@ -162,41 +175,45 @@ int Wifi_SetUploadState(int state)
     }
     else
     {
-        if (!Wifi_AI_SetCore(WIFI_CORE_SOCRAM))
+        if (!Wifi_AI_SetCore(WIFI_CORE_SDIOD))
             return 0;
 
-        // TODO write vars and shit
+        u32 base = Wifi_AI_GetCoreMemBase();
+        u32 ff = 0xFFFFFFFF;
+        SDIO_WriteF1Memory(base+0x020, (u8*)&ff, 4);
+
+        if (!Wifi_AI_SetCore(WIFI_CORE_ARMCM3))
+            return 0;
+
+        Wifi_AI_ResetCore(0, 0);
     }
 
     return 1;
 }
-void send_binary(u8* data, int len);
+
 int Wifi_UploadFirmware()
 {
-    u32 offset, length;
-    if (!Flash_GetEntryInfo("WIFI", &offset, &length, NULL))
+    u32 fw_offset, fw_length;
+    u32 nv_offset, nv_length;
+
+    if (!Flash_GetEntryInfo("WIFI", &fw_offset, &fw_length, NULL))
+        return 0;
+    if (!Flash_GetEntryInfo("WNVR", &nv_offset, &nv_length, NULL))
         return 0;
 
     int tmplen = 0x2000;
     u8* tmpbuf = (u8*)memalign(16, tmplen);
-    printf("firmware offset=%08X len=%d\n", offset, length);
 
-    //if (!SDIO_SetClocks(1, 1)) return 0;
+    if (!SDIO_SetClocks(1, SDIO_CLOCK_REQ_ALP)) return 0;
     if (!Wifi_SetUploadState(1)) return 0;
-    printf("we're going\n");
-    //length = 256;//0x200;
 
-    for (int i = 0; i < length; )
+    for (int i = 0; i < fw_length; )
     {
         int chunk = tmplen;
-        if ((i + chunk) > length)
-            chunk = length - i;
+        if ((i + chunk) > fw_length)
+            chunk = fw_length - i;
 
-        printf("writing %08X, len=%d\n", i, chunk);
-        Flash_Read(offset + i, tmpbuf, chunk);
-
-        //printf("upload FLASH:\n");
-        //send_binary(tmpbuf, chunk);
+        Flash_Read(fw_offset + i, tmpbuf, chunk);
 
         if (!SDIO_WriteF1Memory(i, tmpbuf, chunk))
             return 0;
@@ -204,16 +221,17 @@ int Wifi_UploadFirmware()
         i += chunk;
     }
 
+#if 0
     printf("firmware upload done, verifying\n");
 
     u8* verbuf = (u8*)memalign(16, tmplen);
-    for (int i = 0; i < length; )
+    for (int i = 0; i < fw_length; )
     {
         int chunk = tmplen;
-        if ((i + chunk) > length)
-            chunk = length - i;
+        if ((i + chunk) > fw_length)
+            chunk = fw_length - i;
 
-        Flash_Read(offset + i, tmpbuf, chunk);
+        Flash_Read(fw_offset + i, tmpbuf, chunk);
 
         if (!SDIO_ReadF1Memory(i, verbuf, chunk))
         {
@@ -221,18 +239,9 @@ int Wifi_UploadFirmware()
             return 0;
         }
 
-        /*printf("FLASH:\n");
-        send_binary(tmpbuf, chunk);
-        printf("SDIO:\n");
-        send_binary(verbuf, chunk);*/
-
         if (memcmp(tmpbuf, verbuf, chunk))
         {
             printf("%08X: error\n", i);
-            /*printf("%08X %08X %08X %08X\n", *(u32*)&tmpbuf[0], *(u32*)&tmpbuf[4], *(u32*)&tmpbuf[8], *(u32*)&tmpbuf[12]);
-            printf("%08X %08X %08X %08X\n", *(u32*)&verbuf[0], *(u32*)&verbuf[4], *(u32*)&verbuf[8], *(u32*)&verbuf[12]);
-            printf("%08X %08X %08X %08X\n", *(u32*)&tmpbuf[16+0], *(u32*)&tmpbuf[16+4], *(u32*)&tmpbuf[16+8], *(u32*)&tmpbuf[16+12]);
-            printf("%08X %08X %08X %08X\n", *(u32*)&verbuf[16+0], *(u32*)&verbuf[16+4], *(u32*)&verbuf[16+8], *(u32*)&verbuf[16+12]);*/
             return 0;
         }
 
@@ -240,10 +249,49 @@ int Wifi_UploadFirmware()
     }
     printf("OK\n");
     free(verbuf);
+#endif
+    printf("firmware uploaded\n");
+
+    free(tmpbuf);
+
+    tmpbuf = (u8*)memalign(16, nv_length + 16);
+    Flash_Read(nv_offset, tmpbuf, nv_length);
+    u32 var_length = process_nvram_vars((char*)tmpbuf, nv_length);
+    tmpbuf[var_length++] = 0;
+
+    var_length = (var_length + 3) & ~3;
+    u32 var_addr = RAMSize - 4 - var_length;
+    if (!SDIO_WriteF1Memory(var_addr, tmpbuf, var_length))
+        return 0;
+
+    u32 len_token = (var_length >> 2) & 0xFFFF;
+    len_token = len_token | ((~len_token) << 16);
+    if (!SDIO_WriteF1Memory(RAMSize - 4, (u8*)&len_token, 4))
+        return 0;
+
+    free(tmpbuf);
+    printf("NVRAM uploaded\n");
 
     Wifi_SetUploadState(0);
     SDIO_SetClocks(1, 0);
 
-    free(tmpbuf);
     return 1;
 }
+
+
+// NOTES on sending stuff
+//
+// * dhd_bus_txctl() sends command/shit to the wifi chip
+//
+// HEADER for IOCTL
+// 2b: len (message length)
+// 2b: ~len
+// 4b: header (bit0-7 = seqno, bit8-11 = channel, bit24-31 = data offset)
+// 4b: 0
+// then data (with optional offset?)
+//
+// IOCTL STRUCTURE
+// see cdc_ioctl_t
+// 4b cmd, 4b len, 4b flags, 4b status
+// see wlioctl.h for ioctl values
+// see dhd_preinit_ioctls() for init stuff
