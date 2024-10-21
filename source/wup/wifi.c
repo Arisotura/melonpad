@@ -84,16 +84,56 @@ int Wifi_Init()
     regval |= (1<<1);
     SDIO_WriteF1Memory(base+0x000, (u8*)&regval, 4);
 
+    // removeme?
     {
         // stupid shit
-        u8 val = 0x02; // enable F1
-        if (!SDIO_WriteCardRegs(0, 0x2, 1, &val))
+        regval = (1<<1); // enable F1
+        if (!SDIO_WriteCardRegs(0, 0x2, 1, (u8*)&regval))
             return 0;
     }
     SDIO_SetClocks(1, 0);
 
-    int ret = Wifi_UploadFirmware();
-    printf("ret=%d\n", ret);
+    if (!Wifi_UploadFirmware())
+        return 0;
+
+    SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
+    SDIO_SetClocks(1, SDIO_CLOCK_FORCE_HT);
+
+    {
+        Wifi_AI_SetCore(WIFI_CORE_SDIOD);
+        u32 base = Wifi_AI_GetCoreMemBase();
+
+        // enable frame transfers
+        regval = (4 << 16);
+        SDIO_WriteF1Memory(base + 0x48, (u8*)&regval, 4);
+
+        // enable F2
+        u8 fn = (1<<1) | (1<<2);
+        regval = fn;
+        SDIO_WriteCardRegs(0, 0x2, 1, (u8*)&regval);
+
+        // wait for it to be ready
+        // TODO have a timeout here?
+        for (;;)
+        {
+            regval = 0;
+            SDIO_ReadCardRegs(0, 0x3, 1, (u8*)&regval);
+            if (regval == fn) break;
+            WUP_DelayUS(1);
+        }
+
+        printf("F2 came up? %02X = %02X\n", regval, 6);
+
+        // enable interrupts
+        regval = 0x200000F0;
+        SDIO_WriteF1Memory(base + 0x24, (u8*)&regval, 4);
+
+        // set watermark
+        regval = 8;
+        SDIO_WriteCardRegs(1, 0x10008, 1, (u8*)&regval);
+    }
+
+    SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     return 1;
 }

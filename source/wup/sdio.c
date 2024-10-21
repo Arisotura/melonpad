@@ -34,8 +34,6 @@ int SDIO_Init()
     if (!SDIO_EnableClock(128)) return 0;
     if (!SDIO_EnablePower()) return 0;
 
-    // TODO: is it possible to be in SPI mode on this controller?
-
     // read RCA
     if (!SDIO_SendCommand(3, 0)) return 0;
     SDIO_ReadResponse(&SD_RCA, 1);
