@@ -135,6 +135,12 @@ int Wifi_Init()
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
+    void recvtest();
+    recvtest();
+
+    void ioctltest();
+    ioctltest();
+
     return 1;
 }
 
@@ -335,3 +341,128 @@ int Wifi_UploadFirmware()
 // 4b cmd, 4b len, 4b flags, 4b status
 // see wlioctl.h for ioctl values
 // see dhd_preinit_ioctls() for init stuff
+
+void recvtest()
+{
+    for (;;)
+    {
+        if (!(REG_SD_IRQSTATUS & SD_IRQ_CARD_IRQ))
+            break;
+
+        u32 irqstatus = 0;
+        u32 base = Wifi_AI_GetCoreMemBase();
+        SDIO_ReadF1Memory(base + 0x020, (u8*)&irqstatus, 4);
+        if (irqstatus == 0) printf("got card IRQ but it was zero?\n");
+        if (irqstatus == 0) return;
+        SDIO_WriteF1Memory(base + 0x20, (u8*)&irqstatus, 4); // ack
+        printf("* got card IRQ: %08X\n", irqstatus);
+
+        if (irqstatus & (1<<7))
+        {
+            // host mail
+
+            u32 regval = 0;
+            SDIO_ReadF1Memory(base + 0x04C, (u8*)&regval, 4);
+            u32 ack = (1<<1);
+            SDIO_WriteF1Memory(base + 0x040, (u8*)&ack, 4);
+            printf("HOST MAIL: %08X\n", regval);
+        }
+
+        if (irqstatus & (1<<6))
+        {
+            // incoming data
+
+            printf("incoming data\n");
+            u8 buf[256];
+            // TODO make it nice
+            memset(buf, 0, 0x40);
+            SDIO_ReadCardData(2, 0x8000, buf, 0x40, 0);
+            printf("resp header = %08X %08X %08X\n", *(u32*)&buf[0], *(u32*)&buf[4], *(u32*)&buf[8]);
+            printf("blarg = %08X %08X %08X %08X\n", *(u32*)&buf[0xC], *(u32*)&buf[0x10], *(u32*)&buf[0x14], *(u32*)&buf[0x18]);
+            printf("data = %02X:%02X:%02X:%02X:%02X:%02X\n",
+                   buf[0x1C], buf[0x1D], buf[0x1E], buf[0x1F], buf[0x20], buf[0x21]);
+        }
+
+        REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
+    }
+}
+
+void ioctltest()
+{
+    {
+        u32 irqstatus = 0;
+        u32 base = Wifi_AI_GetCoreMemBase();
+        SDIO_ReadF1Memory(base + 0x020, (u8*)&irqstatus, 4);
+        printf("got pre card IRQ: %04X %08X\n", REG_SD_IRQSTATUS, irqstatus);
+    }
+
+    u8 buf[0xC0];
+    u8 seqno = 0x01;//0xFF; // todo
+    u8 chan = 0; // control
+    u32 opc = 262; // WLC_GET_VAR
+    u32 len = 128; // todo?
+    u16 reqid = 1; // todo
+
+    char* data = "cur_etheraddr";
+    int datalen = strlen(data) + 1;
+
+    u32 header = seqno | (chan << 8) | (0xC << 24);
+    *(u32*)&buf[0x04] = header;
+    *(u32*)&buf[0x08] = 0;
+    *(u32*)&buf[0x0C] = opc;
+    *(u32*)&buf[0x10] = datalen;
+    *(u32*)&buf[0x14] = reqid << 16;
+    *(u32*)&buf[0x18] = 0; // status
+
+    memcpy(&buf[0x1C], data, datalen);
+    buf[0x1C+datalen] = 0;
+
+    *(u16*)&buf[0x00] = *(u32*)&buf[0x10] + 0x1C;
+    *(u16*)&buf[0x02] = ~*(u16*)&buf[0x00];
+
+    SDIO_WriteCardData(2, 0x8000, buf, 0x40, 0);
+    printf("we sent it\n");
+
+    //WUP_DelayMS(50);
+    //printf("IRQ=%04X/%04X\n", REG_SD_IRQSTATUS | REG_SD_EIRQSTATUS);
+    // TODO wait for IRQ
+    for (;;)
+    {
+        u16 irq = REG_SD_IRQSTATUS;
+        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_CARD_IRQ)))
+            continue;
+
+        if (irq & SD_IRQ_ERROR)
+            return;
+
+        REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
+        break;
+    }
+
+    u32 irqstatus = 0;
+    u32 base = Wifi_AI_GetCoreMemBase();
+    SDIO_ReadF1Memory(base + 0x020, (u8*)&irqstatus, 4);
+    printf("got card IRQ: %08X\n", irqstatus);
+    if (irqstatus & (1<<6))
+    {
+        // we got a reply
+
+        u32 clr = (1<<6);
+        SDIO_WriteF1Memory(base + 0x020, (u8*)&clr, 4);
+
+        // TODO make it nice
+        memset(buf, 0, 0x40);
+        SDIO_ReadCardData(2, 0x8000, buf, 0x40, 0);
+        printf("resp header = %08X %08X %08X\n", *(u32*)&buf[0], *(u32*)&buf[4], *(u32*)&buf[8]);
+        printf("blarg = %08X %08X %08X %08X\n", *(u32*)&buf[0xC], *(u32*)&buf[0x10], *(u32*)&buf[0x14], *(u32*)&buf[0x18]);
+        printf("data = %02X:%02X:%02X:%02X:%02X:%02X\n",
+               buf[0x1C], buf[0x1D], buf[0x1E], buf[0x1F], buf[0x20], buf[0x21]);
+
+        memset(buf, 0, 0x40);
+        SDIO_ReadCardData(2, 0x8000, buf, 0x40, 0);
+        printf("resp header = %08X %08X %08X\n", *(u32*)&buf[0], *(u32*)&buf[4], *(u32*)&buf[8]);
+        printf("blarg = %08X %08X %08X %08X\n", *(u32*)&buf[0xC], *(u32*)&buf[0x10], *(u32*)&buf[0x14], *(u32*)&buf[0x18]);
+        printf("data = %02X:%02X:%02X:%02X:%02X:%02X\n",
+               buf[0x1C], buf[0x1D], buf[0x1E], buf[0x1F], buf[0x20], buf[0x21]);
+    }
+}

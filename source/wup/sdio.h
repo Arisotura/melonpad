@@ -22,6 +22,8 @@ void SDIO_ReadResponse(u32* resp, int len);
 int SDIO_GetOCR(u32 arg, u32* resp);
 int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val);
 int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val);
+int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr);
+int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr);
 
 void SDIO_SetBusWidth(int width);
 
