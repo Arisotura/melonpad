@@ -46,11 +46,11 @@ vec_reset:
 	ldr r1, =__bss_end__
 	bl clear_mem
 
-	ldr r3, =__libc_init_array
-	blx r3
-
 	ldr r3, =WUP_Init
 	blx r3
+
+	ldr r3, =__libc_init_array
+    blx r3
 
 	ldr r3, =main
 	blx r3
