@@ -269,6 +269,7 @@ void UIC_WriteDisable()
     if (!UICGood) return;
 
     UIC_SendCommand(0x04, NULL, 0, NULL, 0);
+    WUP_DelayMS(140);
 }
 
 int UIC_ReadEEPROM(u32 offset, u8* data, int length)
