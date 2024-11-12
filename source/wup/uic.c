@@ -257,6 +257,20 @@ void UIC_GetInputData(u8* data)
 }
 
 
+void UIC_WriteEnable()
+{
+    if (!UICGood) return;
+
+    UIC_SendCommand(0x06, NULL, 0, NULL, 0);
+}
+
+void UIC_WriteDisable()
+{
+    if (!UICGood) return;
+
+    UIC_SendCommand(0x04, NULL, 0, NULL, 0);
+}
+
 int UIC_ReadEEPROM(u32 offset, u8* data, int length)
 {
     if (!UICGood) return 0;
@@ -272,6 +286,33 @@ int UIC_ReadEEPROM(u32 offset, u8* data, int length)
     buf[2] = length;
 
     UIC_SendCommand(0x03, buf, 3, data, length);
+    return 1;
+}
+
+int UIC_WriteEEPROM(u32 offset, u8* data, int length)
+{
+    if (!UICGood) return 0;
+
+    offset += 0x1100;
+    if (offset >= 0x1800) return 0;
+    if (length < 1) return 0;
+    if (length >= 256) return 0;
+
+    u8 buf[3];
+    buf[0] = (offset >> 8) & 0xFF;
+    buf[1] = offset & 0xFF;
+    buf[2] = length;
+
+    SPI_Start(SPI_DEVICE_UIC, 0x8018);
+
+    u8 cmd = 0x02;
+    SPI_Write(&cmd, 1);
+    WUP_DelayUS(60);
+    SPI_Write(buf, 3);
+    WUP_DelayUS(60);
+    SPI_Write(data, length);
+
+    SPI_Finish();
     return 1;
 }
 
