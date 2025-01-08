@@ -17,7 +17,7 @@ __eheap_end	=	ORIGIN(ram) + LENGTH(ram);
 
 __sp_svc	=	__ram_end;
 __sp_irq	=	__sp_svc - 0x100;
-__sp_usr	=	__sp_irq - 0x100;
+__sp_usr	=	__sp_irq - 0x1000;
 
 PHDRS
 {

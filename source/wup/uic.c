@@ -26,6 +26,33 @@ const u8 StateTransitions[15][15] = {
 static u8 UICState;
 
 
+u16 CRC16(u8* data, u32 len)
+{
+    u16 crc = 0xFFFF;
+
+    for (u32 i = 0; i < len; i++)
+    {
+        crc ^= data[i];
+        for (u32 j  = 0; j < 8; j++)
+        {
+            if (crc & 0x1)
+                crc = (crc >> 1) ^ 0x8408;
+            else
+                crc >>= 1;
+        }
+    }
+
+    return crc;
+}
+
+int CheckCRC16(u8* data, u32 len)
+{
+    u16 crc_calc = CRC16(data, len);
+    u16 crc_data = data[len] | (data[len+1] << 8);
+    return crc_calc == crc_data;
+}
+
+
 void UIC_Init()
 {
     // the bootloader writes the result of command 7F at 0x3FFFFC

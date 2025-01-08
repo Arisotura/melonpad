@@ -1,6 +1,9 @@
 #ifndef _UIC_H_
 #define _UIC_H_
 
+u16 CRC16(u8* data, u32 len);
+int CheckCRC16(u8* data, u32 len);
+
 void UIC_Init();
 
 u8 UIC_GetFirmwareType();

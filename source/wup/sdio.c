@@ -128,10 +128,36 @@ int SDIO_Init()
     return 1;
 }
 
+void SDIO_EnableCardIRQ()
+{
+    REG_SD_IRQSIGNALENABLE |= SD_IRQ_CARD_IRQ;
+}
+
+void SDIO_DisableCardIRQ()
+{
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+}
+
 void SDIO_IRQHandler(int irq, void* userdata)
 {
-    // TODO.
-    //printf("SDIO: IRQ, %04X %04X\n", REG_SD_IRQSTATUS, REG_SD_EIRQSTATUS);
+    //for (;;)
+    {
+        u16 irq = REG_SD_IRQSTATUS & REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE;
+        if (!irq) return;
+
+        if (irq & SD_IRQ_CARD_IRQ)
+        {
+            // for the card IRQ, it is required to disable it in REG_SD_IRQSTATUSENABLE
+            // for the flag to go to zero
+            u16 oldenable = REG_SD_IRQSTATUSENABLE;
+            REG_SD_IRQSTATUSENABLE = oldenable & ~SD_IRQ_CARD_IRQ;
+
+            Wifi_CardIRQ();
+
+            REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
+            REG_SD_IRQSTATUSENABLE = oldenable;
+        }
+    }
 }
 
 
@@ -144,7 +170,6 @@ int SDIO_EnableClock(u16 div)
 
     REG_SD_CLOCKCNT &= ~(1<<2);
 
-    printf("div=%d div_reg=%04X reg=%04X\n", div, div_reg, (REG_SD_CLOCKCNT & ~0xFF00) | div_reg);
     REG_SD_CLOCKCNT = (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00);
 
     REG_SD_CLOCKCNT |= (1<<0);
@@ -159,7 +184,6 @@ int SDIO_EnableClock(u16 div)
         timeout--;
         div >>= 1;
     }
-    printf("clock timeout = %04X\n", timeout);
 
     u16 eintenable = REG_SD_EIRQSTATUSENABLE;
     REG_SD_EIRQSTATUSENABLE = eintenable & ~SD_EIRQ_DATA_TIMEOUT;
@@ -192,14 +216,15 @@ int SDIO_EnablePower()
 
     REG_SD_POWERCNT = SD_POWER_BUS_ENABLE | SD_POWER_VOLTS(volts);
     WUP_DelayMS(250);
+    printf("REG_SD_POWERCNT=%02X\n", REG_SD_POWERCNT);
 
     u32 ocr_resp = 0;
     if (!SDIO_GetOCR(0, &ocr_resp))
-        return 0;
+    {printf("OCR fail\n"); return 0;}
 
     SD_NumFuncs = (ocr_resp >> 30) & 0x7;
     if (SD_NumFuncs == 0)
-        return 0;
+    {printf("numfuncs=%d\n", SD_NumFuncs); return 0;}
 
     printf("OCR=%08X funcs=%d\n", ocr_resp, SD_NumFuncs);
     SDIO_GetOCR(0xFFF000, &ocr_resp);
@@ -400,14 +425,15 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (incr_addr)
         cmdarg |= (1<<26);
 
-    int blocksize = (func == 2) ? 512 : 64;
+    int blocksize = 64;//(func == 2) ? 512 : 64;
 
     if (len >= blocksize)
     {
         if (len & (blocksize-1))
             return 0;
 
-        int blocknum = len >> ((func == 2) ? 9 : 6);
+        //int blocknum = len >> ((func == 2) ? 9 : 6);
+        int blocknum = len >> 6;
         if (blocknum > 0x200)
             return 0;
 
@@ -444,7 +470,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 
     if (xfermode & (1<<0))
     {
-        DC_InvalidateRange(data, len);
+        DC_FlushRange(data, len);
         REG_SD_SYSADDR = (u32)data;
     }
 
@@ -476,11 +502,32 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 
         int words = len >> 2;
         int i;
-        for (i = 0; i < words; i++)
-            ((u32*)data)[i] = REG_SD_DATAPORT32;
+        if (((u32)data) & 0x3)
+        {
+            for (i = 0; i < words; i++)
+            {
+                u32 val = REG_SD_DATAPORT32;
+                data[i*4+0] = val & 0xFF;
+                data[i*4+1] = (val >> 8) & 0xFF;
+                data[i*4+2] = (val >> 16) & 0xFF;
+                data[i*4+3] = val >> 24;
+            }
 
-        if (len & 2)
-            ((u16*)data)[i*2] = REG_SD_DATAPORT16;
+            if (len & 2)
+            {
+                u16 val = REG_SD_DATAPORT16;
+                data[i*4+0] = val & 0xFF;
+                data[i*4+1] = val >> 8;
+            }
+        }
+        else
+        {
+            for (i = 0; i < words; i++)
+                ((u32*)data)[i] = REG_SD_DATAPORT32;
+
+            if (len & 2)
+                ((u16*)data)[i*2] = REG_SD_DATAPORT16;
+        }
         if (len & 1)
             data[i*4+2] = REG_SD_DATAPORT8;
     }
@@ -498,6 +545,9 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         REG_SD_IRQSTATUS = SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA;
         break;
     }
+
+    if (xfermode & (1<<0))
+        DC_InvalidateRange(data, len);
 
     return 1;
 }
@@ -520,14 +570,15 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (incr_addr)
         cmdarg |= (1<<26);
 
-    int blocksize = (func == 2) ? 512 : 64;
+    int blocksize = 64;//(func == 2) ? 512 : 64;
 
     if (len >= blocksize)
     {
         if (len & (blocksize-1))
             return 0;
 
-        int blocknum = len >> ((func == 2) ? 9 : 6);
+        //int blocknum = len >> ((func == 2) ? 9 : 6);
+        int blocknum = len >> 6;
         if (blocknum > 0x200)
             return 0;
 
@@ -596,11 +647,35 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 
         int words = len >> 2;
         int i;
-        for (i = 0; i < words; i++)
-            REG_SD_DATAPORT32 = ((u32*)data)[i];
+        if (((u32)data) & 0x3)
+        {
+            for (i = 0; i < words; i++)
+            {
+                u32 val;
+                val = data[i*4+0];
+                val |= (data[i*4+1] << 8);
+                val |= (data[i*4+2] << 16);
+                val |= (data[i*4+3] << 24);
+                REG_SD_DATAPORT32 = val;
+            }
 
-        if (len & 2)
-            REG_SD_DATAPORT16 = ((u16*)data)[i*2];
+            if (len & 2)
+            {
+                u16 val;
+                val = data[i*4+0];
+                val |= (data[i*4+1] << 8);
+                REG_SD_DATAPORT16 = val;
+            }
+        }
+        else
+        {
+            for (i = 0; i < words; i++)
+                REG_SD_DATAPORT32 = ((u32*)data)[i];
+
+            if (len & 2)
+                REG_SD_DATAPORT16 = ((u16*)data)[i*2];
+        }
+
         if (len & 1)
             REG_SD_DATAPORT8 = data[i*4+2];
     }

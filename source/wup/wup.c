@@ -161,6 +161,9 @@ void WUP_Init()
     GFX_Init();
     LCD_Init();
 
+    AudioAmp_Init();
+    Audio_Init();
+
     //SDIO_Init();
 
     Input_Init();
@@ -207,11 +210,25 @@ void WUP_DisableIRQ(u8 irq)
 
     RestoreIRQ(irqen);
 }
-
+u32 irqlog[16];
 void IRQHandler()
 {
+    irqlog[12] = *(vu32*)0xF00013FC;
+    irqlog[10] = *(vu32*)0xF00013F8;
+    irqlog[11] = *(vu32*)0xF00019F8;
     u32 irqnum = REG_IRQ_CURRENT;
+    irqlog[13] = *(vu32*)0xF00013FC;
+    irqlog[7] = *(vu32*)0xF00013F8;
+    irqlog[8] = *(vu32*)0xF00019F8;
     u32 ack = REG_IRQ_ACK_KEY;
+    irqlog[0] = ack;
+    irqlog[1] = REG_IRQ_ACK_KEY;
+    irqlog[2] = *(vu32*)0xF00013F8;
+    irqlog[9] = *(vu32*)0xF00019F8;
+    irqlog[3] = *(vu32*)0xF00013FC;
+    irqlog[4] = *(vu32*)0xF00019F8;
+    irqlog[5] = *(vu32*)0xF00019FC;
+    irqlog[6] = REG_IRQ_ACK_KEY;
 
     if (irqnum < 64)
     {

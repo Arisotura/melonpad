@@ -16,6 +16,8 @@
 #include "uic.h"
 #include "lcd.h"
 #include "gfx.h"
+#include "audioamp.h"
+#include "audio.h"
 
 #include "sdio.h"
 #include "wifi.h"
