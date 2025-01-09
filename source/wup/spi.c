@@ -56,98 +56,33 @@ void SPI_Finish()
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_CS_MASK) | SPI_CSMODE_MANUAL | SPI_CS_RELEASE;
 }
 
-extern volatile int irqnum;
+
 void SPI_Read(u8* buf, int len)
 {
+    DC_FlushRange(buf, len);
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_READ;
 
-    SPI_IRQStatus &= ~SPI_IRQ_READ;
-    REG_SPI_IRQ_ENABLE |= SPI_IRQ_READ;
-
-    for (int i = 0; i < len; )
-    {
-        int chunk = 16;
-        if ((i + chunk) > len)
-            chunk = len - i;
-
-        // initiate a read
-        REG_SPI_READ_LEN = chunk;
-
-        while (!(SPI_IRQStatus & SPI_IRQ_READ))
-            WaitForIRQ();
-
-        SPI_IRQStatus &= ~SPI_IRQ_READ;
-
-        // read out the data from the FIFO
-        while ((SPI_READ_FIFO_LVL > 0) && (i < len))
-            buf[i++] = REG_SPI_DATA;
-    }
-
-    /*REG_SPI_READ_LEN = len;
-
-    irqnum = 0;
-    *(vu32*)0xF0004044 = (2<<1); // must be 2
-    *(vu32*)0xF0004048 = 0; //??
-    *(vu32*)0xF000404C = 0; //??
-    *(vu32*)0xF0004050 = len - 1;
-    *(vu32*)0xF0004054 = (u32)buf;
-    *(vu32*)0xF0004040 = 1;
-
-    while (!(SPI_IRQStatus & SPI_IRQ_READ))
-        WaitForIRQ();
-
-    //while (*(vu32*)0xF0004040 & 1);
-    while (!irqnum) WaitForIRQ();
-
-    *(vu32*)0xF0004040 = 2;*/
+    REG_SPI_READ_LEN = len;
+    SPDMA_Transfer(0, buf, SPDMA_PERI_SPI, SPDMA_DIR_READ, len);
+    SPDMA_Wait(0);
 
     REG_SPI_READ_LEN = 0;
-    REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_READ;
+    DC_InvalidateRange(buf, len);
 }
 
 void SPI_Write(u8* buf, int len)
 {
+    DC_FlushRange(buf, len);
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
 
     SPI_IRQStatus &= ~SPI_IRQ_WRITE;
     REG_SPI_IRQ_ENABLE |= SPI_IRQ_WRITE;
 
-    for (int i = 0; i < len; i++)
-    {
-        REG_SPI_DATA = buf[i];
-
-        // if we filled the FIFO entirely, wait for it to be transferred
-        if (SPI_WRITE_FIFO_LVL == 0)
-        {
-            while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
-                WaitForIRQ();
-
-            SPI_IRQStatus &= ~SPI_IRQ_WRITE;
-        }
-    }
-
-    // wait for any leftover contents to be transferred
-    if (SPI_WRITE_FIFO_LVL < 16)
-    {
-        while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
-            WaitForIRQ();
-    }
-
-    /*irqnum = 0;
-    *(vu32*)0xF0004044 = 1 | (2<<1); // must be 2
-    *(vu32*)0xF0004048 = 0; //??
-    *(vu32*)0xF000404C = 0; //??
-    *(vu32*)0xF0004050 = len - 1;
-    *(vu32*)0xF0004054 = (u32)buf;
-    *(vu32*)0xF0004040 = 1;
-
-    //while (*(vu32*)0xF0004040 & 1);
-    while (!irqnum) WaitForIRQ();
+    SPDMA_Transfer(0, buf, SPDMA_PERI_SPI, SPDMA_DIR_WRITE, len);
+    SPDMA_Wait(0);
 
     while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
         WaitForIRQ();
-
-    *(vu32*)0xF0004040 = 2;*/
 
     REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_WRITE;
 }
