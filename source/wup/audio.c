@@ -10,10 +10,9 @@ static u8 CurOutput;
 
 int Audio_Init()
 {
-    printf("Audio_Init\n");
     // retrieve volume min/max
     u8 tmp[4] = {0};
-    /*UIC_ReadEEPROM(0x11A, tmp, 4);
+    UIC_ReadEEPROM(0x11A, tmp, 4);
     if (CheckCRC16(tmp, 2))
     {
         VolumeMin = tmp[0];
@@ -32,11 +31,9 @@ int Audio_Init()
         {
             // fail-safe defaults
             VolumeMin = 1;
-            VolumeMax = 255;
+            VolumeMax = 254;
         }
-    }*/
-    VolumeMin = 1;
-    VolumeMax = 255;
+    }
 
     if (VolumeMin > VolumeMax)
     {
@@ -44,14 +41,14 @@ int Audio_Init()
         VolumeMin = VolumeMax;
         VolumeMax = tmp;
     }
-printf("zaa\n");
+
     // start out muted, this will be updated later
     CurVolume = -1;
     CurMute = -1;
     CurOutput = -1;
     Audio_SetVolume(0);
     Audio_SetOutput(0);
-printf("zii\n");
+
     return 1;
 }
 
@@ -75,7 +72,7 @@ void Audio_SetVolume(u8 vol)
         ampvol = -0x3500 + (((vol - vmin) * 0x2600) / (vmid - vmin + 1));
     else
         ampvol = -0xF00 + (((vol - vmid) * 0xF00) / (vmax - vmid + 1));
-printf("audio: vol=%d amp=%d (%08X)   min=%d mid=%d max=%d\n", vol, ampvol, ampvol, vmin, vmid, vmax);
+
     AudioAmp_SetVolume(ampvol);
     AudioAmp_SetMute(vol < vmin);
 }

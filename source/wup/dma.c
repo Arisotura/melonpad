@@ -57,6 +57,8 @@ void SPDMA_Wait(u32 chan)
         while (!DMA_IRQFlag[chan])
             WaitForIRQ();
     }
+
+    REG_SPDMA_START(chan) = SPDMA_STOP;
 }
 
 
@@ -210,4 +212,6 @@ void GPDMA_Wait(u32 chan)
         while (!DMA_IRQFlag[2+chan])
             WaitForIRQ();
     }
+
+    REG_GPDMA_START(chan) = GPDMA_STOP;
 }

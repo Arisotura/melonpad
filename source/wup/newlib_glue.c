@@ -40,6 +40,7 @@ int _read(int file, char *ptr, int len)
 void _SPI_Write(u8* buf, int len)
 {
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
+    REG_SPI_IRQ_ENABLE |= SPI_IRQ_WRITE;
 
     for (int i = 0; i < len; i++)
     {
@@ -48,7 +49,9 @@ void _SPI_Write(u8* buf, int len)
     }
 
     // wait for any leftover contents to be transferred
-    while (SPI_WRITE_FIFO_LVL < 16);
+    while (!(REG_SPI_IRQ_STATUS & SPI_IRQ_WRITE));
+    REG_SPI_IRQ_STATUS |= SPI_IRQ_WRITE;
+    REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_WRITE;
 }
 
 int _write(int file, char *ptr, int len)

@@ -168,10 +168,7 @@ static void AudioAmp_ApplyCoefTable(u8 addr1, u8 addr2, u16* table, int len)
 
 int AudioAmp_Init()
 {
-    printf("aamp: start\n");
-
     AudioAmp_ApplyCmdTable(AAmpInit1, 0x1E);
-    printf("aamp: table 1 done\n");
 
     // TODO: is this even the headphone register?
     // seems to always read as 0xA0
@@ -180,7 +177,6 @@ int AudioAmp_Init()
     printf("aamp: headphone=%02X\n", headphone);
 
     AudioAmp_ApplyCmdTable(AAmpInit2, 0x17);
-    printf("aamp: table 2 done\n");
 
     AudioAmp_SetPage(0x08);
     AudioAmp_WriteReg(0x01, 0x04);
@@ -190,10 +186,7 @@ int AudioAmp_Init()
     else*/
         AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones0, 0x1E);
 
-    printf("aamp: table 3 done\n");
-
     AudioAmp_ApplyCmdTable(AAmpInit3, 0xB);
-    printf("aamp: table 4 done\n");
 
     return 1;
 }
@@ -237,8 +230,6 @@ void AudioAmp_SetVolume(int vol)
         volreg = 0x30;      // maximum volume (24dB)
     else
         volreg = ((vol << 1) + 0x80) >> 8;
-
-    printf("AudioAmp: vol=%d reg=%02X\n", vol, volreg);
 
     AudioAmp_SetPage(0x00);
     AudioAmp_WriteReg(0x41, volreg);
