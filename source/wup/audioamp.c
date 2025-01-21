@@ -134,6 +134,8 @@ static u16 AAmpCoefSpeakers[0x1E] = {
     0x7FFF, 0xE788, 0x3D1B, 0x1BA1, 0xAA7A
 };
 
+static u8 AAmpType;
+
 
 static void AudioAmp_ApplyCmdTable(u16* table, int len)
 {
@@ -170,20 +172,24 @@ int AudioAmp_Init()
 {
     AudioAmp_ApplyCmdTable(AAmpInit1, 0x1E);
 
-    // TODO: is this even the headphone register?
-    // seems to always read as 0xA0
-    // the amplifier's MICDET line is connected to ground, too
+    // NOTE: the headset detect register (page 0 register 67) is misused here
+    // it serves to identify the motherboard revision (and likely, differences in audio circuitry)
+    // 0x80 == revision 20 (VOL/MICDET tied to Vcc)
+    // 0xA0 == revision 01 (VOL/MICDET tied to ground)
     u8 headphone = AudioAmp_ReadReg(0x43);
-    printf("aamp: headphone=%02X\n", headphone);
+    if (headphone == 0x80)
+        AAmpType = 1;
+    else
+        AAmpType = 0;
 
     AudioAmp_ApplyCmdTable(AAmpInit2, 0x17);
 
     AudioAmp_SetPage(0x08);
     AudioAmp_WriteReg(0x01, 0x04);
 
-    /*if (headphone == 0x80)
+    if (AAmpType == 1)
         AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones1, 0x1E);
-    else*/
+    else
         AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones0, 0x1E);
 
     AudioAmp_ApplyCmdTable(AAmpInit3, 0xB);
@@ -256,7 +262,10 @@ void AudioAmp_SetOutput(int output)
     else
     {
         // headphones
-        AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones0, 0x1E);
+        if (AAmpType == 1)
+            AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones1, 0x1E);
+        else
+            AudioAmp_ApplyCoefTable(0x02, 0x42, AAmpCoefHeadphones0, 0x1E);
         AudioAmp_ApplyCmdTable(AAmpCmdHeadphones, 0xD);
     }
 
