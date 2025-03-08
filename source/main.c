@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
 
 #include <wup/wup.h>
+#include <lvgl/lvgl.h>
 
 
 u32 GetCP15Reg(int cn, int cm, int cp);
@@ -16,75 +18,11 @@ void rumble()
 }
 
 
-#if 0
-#include "font.h"
-
-void DrawText(int x, int y, char* str)
-{
-    u8* framebuf = (u8*)GFX_GetFramebuffer();
-
-	int sx = x;
-	for (int i = 0; str[i]; i++)
-	{
-		char ch = str[i];
-		u8* glyph = &font[ch<<4];
-
-		for (int cy = 0; cy < 16; cy++)
-		{
-			u8* line = &framebuf[((y + cy) * 854) + sx];
-			u8 row = *glyph++;
-
-			for (int cx = 0; cx < 8; cx++)
-			{
-				if (row & 0x80)
-					*line = 0xFF;
-
-				line++;
-				row <<= 1;
-			}
-		}
-
-		sx += 8;
-	}
-}
-
-void DrawHex(int x, int y, u32 val)
-{
-	char str[9];
-	for (int i = 0; i < 8; i++)
-	{
-		u32 n = val >> 28;
-		if (n < 10)
-			str[i] = '0' + n;
-		else
-			str[i] = 'A' + (n-10);
-
-		val <<= 4;
-	}
-	str[8] = '\0';
-	DrawText(x, y, str);
-}
-
-void ClearRect(int x, int y, int w, int h)
-{
-	u8* framebuf = (u8*)GFX_GetFramebuffer();
-
-	for (int py = y; py < y+h; py++)
-	{
-		for (int px = x; px < x+w; px++)
-		{
-			framebuf[(py*854) + px] = 0;
-		}
-	}
-}
-#endif
-
-
-
 // FPGA debug output
 
 void send_binary(u8* data, int len)
 {
+#ifdef FPGA_LOG
     len &= 0x3FFF;
     u16 header = len;
 
@@ -97,10 +35,12 @@ void send_binary(u8* data, int len)
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
+#endif
 }
 
 void send_string(char* str)
 {
+#ifdef FPGA_LOG
     int len = strlen(str);
 
     len &= 0x3FFF;
@@ -115,10 +55,12 @@ void send_string(char* str)
     SPI_Write(buf, 3);
     SPI_Write((u8*)str, len);
     SPI_Finish();
+#endif
 }
 
 void dump_data(u8* data, int len)
 {
+#ifdef FPGA_LOG
     len &= 0x3FFF;
     u16 header = 0x4000 | len;
 
@@ -131,6 +73,7 @@ void dump_data(u8* data, int len)
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
+#endif
 }
 
 
@@ -140,6 +83,300 @@ void ExceptionHandler()
     send_string("EXCEPTION\n");
 }
 
+
+
+void flushcb(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
+{
+    /*u8* dst = (u8*)0x380000;
+    int dststride = 856;*/
+    u16* dst = (u16*)0x300000;
+    int dststride = 854;
+
+    int i = 0;
+    for (int y = area->y1; y <= area->y2; y++)
+    {
+        for (int x = area->x1; x <= area->x2; x++)
+        {
+            dst[(y*dststride)+x] = ((u16*)px_map)[i++];
+        }
+    }
+
+    lv_display_flush_ready(display);
+}
+
+
+
+static void event_handler(lv_event_t * e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if(code == LV_EVENT_CLICKED) {
+        LV_LOG_USER("Clicked");
+    }
+    else if(code == LV_EVENT_VALUE_CHANGED) {
+        LV_LOG_USER("Toggled");
+    }
+}
+
+void lv_example_button_1(void)
+{
+    /*lv_obj_t * label;
+
+    lv_obj_t * btn1 = lv_button_create(lv_screen_active());
+    lv_obj_add_event_cb(btn1, event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -40);
+    lv_obj_remove_flag(btn1, LV_OBJ_FLAG_PRESS_LOCK);
+
+    label = lv_label_create(btn1);
+    lv_label_set_text(label, "Button");
+    lv_obj_center(label);
+
+    lv_obj_t * btn2 = lv_button_create(lv_screen_active());
+    lv_obj_add_event_cb(btn2, event_handler, LV_EVENT_ALL, NULL);
+    lv_obj_align(btn2, LV_ALIGN_CENTER, 0, 40);
+    lv_obj_add_flag(btn2, LV_OBJ_FLAG_CHECKABLE);
+    lv_obj_set_height(btn2, LV_SIZE_CONTENT);
+
+    label = lv_label_create(btn2);
+    lv_label_set_text(label, "Toggle");
+    lv_obj_center(label);*/
+
+
+    //lv_obj_t* topbar = lv_obj_create(lv_layer_top());
+    lv_obj_t* topbar = lv_obj_create(lv_screen_active());
+    lv_obj_set_size(topbar, lv_pct(100), 40);//LV_SIZE_CONTENT);
+    lv_obj_t* test = lv_label_create(topbar);
+    lv_label_set_text(test, "melonpad v0.1");
+    lv_obj_align(test, LV_ALIGN_LEFT_MID, 0, 0);
+
+    static lv_style_t style;
+    lv_style_init(&style);
+    lv_style_set_border_side(&style, LV_BORDER_SIDE_BOTTOM);
+    lv_style_set_margin_top(&style, 0);
+    lv_style_set_margin_left(&style, 0);
+    lv_style_set_margin_right(&style, 0);
+    lv_style_set_radius(&style, 0);
+    lv_style_set_pad_top(&style, 0);
+    lv_style_set_pad_bottom(&style, 0);
+    lv_style_set_pad_left(&style, 8);
+    lv_style_set_pad_right(&style, 8);
+    lv_obj_add_style(topbar, &style, 0);
+
+
+    lv_obj_t* list1 = lv_list_create(lv_screen_active());
+    lv_obj_set_size(list1, lv_pct(70), 480-40);
+    lv_obj_align(list1, LV_ALIGN_TOP_LEFT, 0, 40);
+
+    lv_obj_t * btn;
+    lv_list_add_text(list1, "Boot menu");
+    btn = lv_list_add_button(list1, NULL, "Stock firmware");
+    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+    btn = lv_list_add_button(list1, NULL, "lucario.fw");
+    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+    btn = lv_list_add_button(list1, NULL, "Checkerboard");
+    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+    btn = lv_list_add_button(list1, NULL, "Ass vibrator");
+    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+    btn = lv_list_add_button(list1, NULL, "5 is red");
+    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+
+
+    lv_obj_t* list2 = lv_list_create(lv_screen_active());
+    lv_obj_set_size(list2, lv_pct(30), 480-40);
+    lv_obj_align(list2, LV_ALIGN_TOP_RIGHT, 0, 40);
+    
+    lv_list_add_text(list2, "Options");
+    btn = lv_list_add_button(list2, LV_SYMBOL_SETTINGS, "Boot options");
+    btn = lv_list_add_button(list2, LV_SYMBOL_HOME, "Hardware info");
+    btn = lv_list_add_button(list2, LV_SYMBOL_POWER, "Power to the people");
+    lv_list_add_text(list2, "Connectivity");
+    btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Connect to wifi");
+    btn = lv_list_add_button(list2, LV_SYMBOL_BLUETOOTH, "Connect to IR");
+}
+
+void lv_example_button_2(void)
+{
+    /*Init the style for the default state*/
+    static lv_style_t style;
+    lv_style_init(&style);
+
+    lv_style_set_radius(&style, 3);
+
+    lv_style_set_bg_opa(&style, LV_OPA_100);
+    lv_style_set_bg_color(&style, lv_palette_main(LV_PALETTE_BLUE));
+    lv_style_set_bg_grad_color(&style, lv_palette_darken(LV_PALETTE_BLUE, 2));
+    lv_style_set_bg_grad_dir(&style, LV_GRAD_DIR_VER);
+
+    lv_style_set_border_opa(&style, LV_OPA_40);
+    lv_style_set_border_width(&style, 2);
+    lv_style_set_border_color(&style, lv_palette_main(LV_PALETTE_GREY));
+
+    lv_style_set_shadow_width(&style, 8);
+    lv_style_set_shadow_color(&style, lv_palette_main(LV_PALETTE_GREY));
+    lv_style_set_shadow_offset_y(&style, 8);
+
+    lv_style_set_outline_opa(&style, LV_OPA_COVER);
+    lv_style_set_outline_color(&style, lv_palette_main(LV_PALETTE_BLUE));
+
+    lv_style_set_text_color(&style, lv_color_white());
+    lv_style_set_pad_all(&style, 10);
+
+    /*Init the pressed style*/
+    static lv_style_t style_pr;
+    lv_style_init(&style_pr);
+
+    /*Add a large outline when pressed*/
+    lv_style_set_outline_width(&style_pr, 30);
+    lv_style_set_outline_opa(&style_pr, LV_OPA_TRANSP);
+
+    lv_style_set_translate_y(&style_pr, 5);
+    lv_style_set_shadow_offset_y(&style_pr, 3);
+    lv_style_set_bg_color(&style_pr, lv_palette_darken(LV_PALETTE_BLUE, 2));
+    lv_style_set_bg_grad_color(&style_pr, lv_palette_darken(LV_PALETTE_BLUE, 4));
+
+    /*Add a transition to the outline*/
+    static lv_style_transition_dsc_t trans;
+    static lv_style_prop_t props[] = {LV_STYLE_OUTLINE_WIDTH, LV_STYLE_OUTLINE_OPA, 0};
+    lv_style_transition_dsc_init(&trans, props, lv_anim_path_linear, 300, 0, NULL);
+
+    lv_style_set_transition(&style_pr, &trans);
+
+    lv_obj_t * btn1 = lv_button_create(lv_screen_active());
+    lv_obj_remove_style_all(btn1);                          /*Remove the style coming from the theme*/
+    lv_obj_add_style(btn1, &style, 0);
+    lv_obj_add_style(btn1, &style_pr, LV_STATE_PRESSED);
+    lv_obj_set_size(btn1, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_center(btn1);
+
+    lv_obj_t * label = lv_label_create(btn1);
+    lv_label_set_text(label, "Button");
+    lv_obj_center(label);
+}
+
+void lv_example_button_3(void)
+{
+    /*Properties to transition*/
+    static lv_style_prop_t props[] = {
+            LV_STYLE_TRANSFORM_WIDTH, LV_STYLE_TRANSFORM_HEIGHT, LV_STYLE_TEXT_LETTER_SPACE, 0
+    };
+
+    /*Transition descriptor when going back to the default state.
+     *Add some delay to be sure the press transition is visible even if the press was very short*/
+    static lv_style_transition_dsc_t transition_dsc_def;
+    lv_style_transition_dsc_init(&transition_dsc_def, props, lv_anim_path_overshoot, 250, 100, NULL);
+
+    /*Transition descriptor when going to pressed state.
+     *No delay, go to presses state immediately*/
+    static lv_style_transition_dsc_t transition_dsc_pr;
+    lv_style_transition_dsc_init(&transition_dsc_pr, props, lv_anim_path_ease_in_out, 250, 0, NULL);
+
+    /*Add only the new transition to he default state*/
+    static lv_style_t style_def;
+    lv_style_init(&style_def);
+    lv_style_set_transition(&style_def, &transition_dsc_def);
+
+    /*Add the transition and some transformation to the presses state.*/
+    static lv_style_t style_pr;
+    lv_style_init(&style_pr);
+    lv_style_set_transform_width(&style_pr, 10);
+    lv_style_set_transform_height(&style_pr, -10);
+    lv_style_set_text_letter_space(&style_pr, 10);
+    lv_style_set_transition(&style_pr, &transition_dsc_pr);
+
+    lv_obj_t * btn1 = lv_button_create(lv_screen_active());
+    lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -80);
+    lv_obj_add_style(btn1, &style_pr, LV_STATE_PRESSED);
+    lv_obj_add_style(btn1, &style_def, 0);
+
+    lv_obj_t * label = lv_label_create(btn1);
+    lv_label_set_text(label, "Gum");
+}
+
+sInputData* inputdata;
+void readtouch(lv_indev_t * indev, lv_indev_data_t * data)
+{
+    if (inputdata->TouchPressed)
+    {
+        data->point.x = inputdata->TouchX;
+        data->point.y = inputdata->TouchY;
+        data->state = LV_INDEV_STATE_PRESSED;
+    }
+    else
+        data->state = LV_INDEV_STATE_RELEASED;
+}
+
+
+volatile u8 vblendflag;
+void vbl_end(int irq, void* userdata)
+{
+    vblendflag = 1;
+}
+
+
+void clk_testbench()
+{
+    *(vu32*)0xF0004424 = 0;
+
+    // bit9=CS  bit8=device  bit1=direction
+    *(vu32*)0xF0004404 = (*(vu32*)0xF0004404 & ~0x702) | 0x100;
+
+    // 15=0 1=0: clk out=in
+    // 15=0 1=1: clk out=in
+    // 15=1 1=0: clk out=~in
+    // 15=1 1=1: clk out=in
+    //*(vu32*)0xF0004414 &= ~(1<<4);
+    //*(vu32*)0xF0004414 &= ~(1<<1);
+
+    // 857? -> 43MHz
+    *(vu32*)0xF0004400 = 0x8000 | 4 | (19<<3);
+    //*(vu32*)0xF0004400 = 0x8000 | 3;
+    //*(vu32*)0xF0004400 = 0x8000;
+
+    for (;;)
+        *(vu32*)0xF0004410 = 0x00;
+}
+
+void shit_testbench()
+{
+    for (int i = 0; i < 20; i++)
+    {
+        printf("round %d:\n", i);
+
+        u32 zerp[5];
+        Flash_Read(0x66C38C, (u8*)&zerp[0], 4);
+        Flash_Read(0x66C38D, (u8*)&zerp[1], 4);
+        Flash_Read(0x66C38E, (u8*)&zerp[2], 4);
+        Flash_Read(0x66C38F, (u8*)&zerp[3], 4);
+        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);
+
+        /*Flash_Read(0x66C384, (u8*)&zerp[0], 4);
+        Flash_Read(0x66C385, (u8*)&zerp[1], 4);
+        Flash_Read(0x66C386, (u8*)&zerp[2], 4);
+        Flash_Read(0x66C387, (u8*)&zerp[3], 4);
+        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);
+
+        Flash_Read(0x66C37C, (u8*)&zerp[0], 4);
+        Flash_Read(0x66C37D, (u8*)&zerp[1], 4);
+        Flash_Read(0x66C37E, (u8*)&zerp[2], 4);
+        Flash_Read(0x66C37F, (u8*)&zerp[3], 4);
+        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);*/
+
+        Flash_Read(0x66C37F, (u8*)&zerp[0], 20);
+        printf("%08X\n", zerp[4]);
+
+        /*u32 imglen;
+        Flash_Read(0x66C38F, (u8 * ) & imglen, 4);
+        printf("IMG_ len: %08X\n", imglen);*/
+
+        /*u8 *img = (u8 *) malloc(imglen * 0x18);
+        Flash_Read(0x66C38F + 4, img, imglen * 0x18);
+        printf("offset for entry 31: %08X\n", *(u32 * ) & img[0x18 * 31 + 4]);
+
+        free(img);*/
+
+        WUP_DelayMS(500);
+    }
+}
 
 void flash_testbench()
 {
@@ -252,162 +489,120 @@ void flash_testbench()
     }
 }
 
-
-volatile int uartflag;
-u32 proat[8];
-void uart_irq(int irq, void* fart)
+u32 flash_addr = 0x100000;
+void flash_testbench2()
 {
-    /*uartflag = irq;
-    proat[0] = *(vu32*)0xF0004C78;
-    proat[1] = *(vu32*)0xF0004C48;
-    proat[2] = *(vu32*)0xF0004C4C;
-    WUP_DisableIRQ(4);*/
-    for (;;)
+    printf("TESTING AT %08X\n", flash_addr);
+
+    u8* test = (u8*)malloc(0x1008);
+    Flash_Read(flash_addr, test, 0x1008);
+    printf("TEST BEFORE: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
+
+    Flash_WaitForStatus(0x03, 0x00);
+    Flash_WriteEnable();
+
+    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    u8 cmd[5] = {0x20, 0x00, 0x00, 0x00, 0x00};
+    cmd[1] = flash_addr >> 24;
+    cmd[2] = flash_addr >> 16;
+    cmd[3] = flash_addr >> 8;
+    cmd[4] = flash_addr;
+    SPI_Write(cmd, 5);
+    SPI_Finish();
+
+    Flash_WaitForStatus(0x03, 0x00);
+    printf("subsec erased\n");
+
+    Flash_Read(flash_addr, test, 0x1008);
+    printf("TEST AFTER: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
+
+    for (int i = 0; i < 0x100; i++)
+        test[i] = i;//0x40+i;
+    for (int i = 0x100; i < 0x200; i++)
+        test[i] = 0x77;
+
+    Flash_WaitForStatus(0x03, 0x00);
+    Flash_WriteEnable();
+
+    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    u8 cmd2[5] = {0x02, 0x00, 0x00, 0x00, 0x00};
+    u32 flash_addr_2 = flash_addr + 8;
+    cmd2[1] = flash_addr_2 >> 24;
+    cmd2[2] = flash_addr_2 >> 16;
+    cmd2[3] = flash_addr_2 >> 8;
+    cmd2[4] = flash_addr_2;
+    SPI_Write(cmd2, 5);
+    //SPI_Write(test, 0x9);
+    SPI_Write(test, 0x102);
+    SPI_Finish();
+
+    Flash_WaitForStatus(0x03, 0x00);
+    printf("page programmed\n");
+
+    Flash_Read(flash_addr, test, 0x1008);
+    //printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
+    printf("TEST AFTER: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xF8], *(u32*)&test[0xFC], *(u32*)&test[0x100], *(u32*)&test[0x104]);
+    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0x48], *(u32*)&test[0x4C], *(u32*)&test[0x78], *(u32*)&test[0x7C], *(u32*)&test[0x100], *(u32*)&test[0x104]);
+
+    free(test);
+    flash_addr += 0x1000;
+}
+
+
+
+void LoadBinaryFromFlash(u32 addr)
+{
+    AudioAmp_DeInit();
+    //UIC_SetBacklight(0);
+    LCD_SetBrightness(-1);
+    *(vu32*)0xF0005100 = 0xC200;
+    //Wifi_DeInit();
+    WUP_DelayUS(60);
+
+    /*REG_DMA_CNT = 0;
+
+    REG_SPI_CNT = 0;
+    REG_SPI_SPEED = 0;*/
+
+    //DisableIRQ();
+
+    DC_FlushAll();
+    IC_InvalidateAll();
+    DisableMMU();
+
+    u32 loaderaddr, loaderlen;
+    Flash_GetEntryInfo("LDRf", &loaderaddr, &loaderlen, NULL);
+
+    u8 excepvectors[64];
+    Flash_Read(loaderaddr, excepvectors, 64);
+    Flash_Read(loaderaddr + 64, (u8*)0x3F0000, loaderlen - 64);
+
+    *(vu32*)0xF0001200 = 0xFFFF;
+    *(vu32*)0xF0001204 = 0xFFFF;
+
+    for (int i = 0; i < 64; i++)
+        *(u8*)i = excepvectors[i];
+
+    void* loadermain = (void*)(*(vu32*)0x20);
+    ((void(*)(u32))loadermain)(addr);
+}
+
+
+void scantest(sScanInfo* list)
+{
+    printf("RECEIVED SCAN INFO\n");
+
+    sScanInfo* cur = list;
+    while (cur)
     {
-        u32 state = *(vu32*)0xF0004C4C & 0xF;
-        if (state == 1) break;
+        printf("RESULT: %s, CHAN=%d, SEC=%d, RSSI=%d QUAL=%d\n", cur->SSID, cur->Channel, cur->Security, cur->RSSI, cur->SignalQuality);
 
-        if (state == 2)
-        {
-            // idle? finished sending?
-            u32 txfifo = (*(vu32*)0xF0004C78 >> 8) & 0x1F;
-            if (txfifo >= 16) continue;
-
-            *(vu32*)0xF0004C48 &= ~2;
-            uartflag = 1;
-
-            *(vu32*)0xF0004C48 |= 2;
-        }
+        cur = cur->Next;
     }
 }
 
-void uart_testbench()
-{
-    // reset UART?
-    *(vu32*)0xF0000058 |= 0x100;
-    *(vu32*)0xF0000058 &= ~0x100;
 
-    *(vu32*)0xF0004C54 = 0;
-    *(vu32*)0xF0004C48 = 0;
-
-    printf("test\n");
-
-    *(vu32*)0xF0004C70 = 1;
-    *(vu32*)0xF0004C64 = 1;
-    *(vu32*)0xF0004C68 = 2;
-    *(vu32*)0xF0004C6C = 0xD903;
-    *(vu32*)0xF0004C48 = 0;
-    *(vu32*)0xF0004C50 = 0;
-    *(vu32*)0xF0004C54 = 3;
-    *(vu32*)0xF0004C58 = 0;
-    *(vu32*)0xF0004C48 = 0;
-    *(vu32*)0xF0004C48 |= 2; // seems to enable IRQ4
-    *(vu32*)0xF0004C48 |= 5; // enable shit
-printf("bb\n");
-    uartflag = 0;
-    WUP_SetIRQHandler(4, uart_irq, NULL, 0);
-    //WUP_SetIRQHandler(5, uart_irq, NULL, 0);
-
-    printf("aa\n");
-    printf("irq=%d, %08X %08X %08X\n", uartflag, proat[0], proat[1], proat[2]);
-    uartflag = 0;
-
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-
-    *(vu32*)0xF0004C44 = 0x11;
-    *(vu32*)0xF0004C44 = 0x22;
-    *(vu32*)0xF0004C44 = 0x33;
-    u32 farp = *(vu32*)0xF0004C78;
-    printf("farp=%08X\n", farp);
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-
-    // values for F0004C78:
-    // 00000300
-    // 00000202 ??
-    // 00000201
-    // 00000101
-    // 00000001
-
-    // F0004C4C:
-    // 2 when not sending, 1 when sending?
-    // when F0004C48 is 7 -- otherwise it's always 1?
-
-    //*(vu32*)0xF0004C48 = 5;
-    while ((*(vu32*)0xF0004C78 >> 8) == 3);
-    farp = *(vu32*)0xF0004C78;
-    printf("farp=%08X\n", farp);
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-
-    while ((*(vu32*)0xF0004C78 >> 8) == 2);
-    farp = *(vu32*)0xF0004C78;
-    printf("farp=%08X\n", farp);
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-
-    while ((*(vu32*)0xF0004C78 >> 8) != 0);
-    farp = *(vu32*)0xF0004C78;
-    printf("farp=%08X\n", farp);
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-
-    while (!uartflag);
-    u32 farpi = *(vu32*)0xF0004C78;
-    printf("irq=%d farpi=%08X\n", uartflag, farpi);
-    printf("ctl=%08X derp=%08X\n", *(vu32*)0xF0004C48, *(vu32*)0xF0004C4C);
-}
-
-#include "uic_config.h"
-
-
-int _write(int file, char *ptr, int len);
-
-volatile int audioflag;
-volatile int f1, f2;
-volatile u32 schmi;
-volatile u32 schmitime;
-void audioirq(int irq, void* userdata)
-{
-    u32 irqreg = *(vu32*)0xF0005430;
-    if (irqreg & (1<<3))
-    {
-        //
-        schmi = *(vu32*)0xF0005414;
-        schmitime = *(vu32*)0xF0000408;
-        f1++;
-        *(vu32*)0xF0005430 |= (1<<3);
-    }
-    if (irqreg & (1<<2))
-    {
-        //
-        f2++;
-        *(vu32*)0xF0005430 |= (1<<2);
-    }
-    //if (irqreg != 4)
-    {
-        //_write(1, "IRQ17", 5);
-        char dorp[20];
-        sprintf(dorp, "I=%08X\n", irqreg);
-        _write(1, dorp, strlen(dorp));
-    }
-    audioflag++;
-}
-
-volatile int flag18;
-void irq18(int irq, void* userdata)
-{
-    flag18++;
-}
-
-volatile int flag1E;
-u32 last1E;
-volatile int intv1E;
-void irq1E(int irq, void* userdata)
-{
-    flag1E++;
-    u32 t = *(vu32*)0xF0000408;
-    intv1E = t - last1E;
-    last1E = t;
-}
-
-
+void uictest();
 extern u32 irqlog[16];
 void main()
 {
@@ -416,173 +611,57 @@ void main()
 	// setup GPIO
 	*(vu32*)0xF0005114 = 0xC200;
 
+    // clear framebuffer (TODO more nicely)
+    {
+        u16* fb = (u16*)0x300000;
+        for (i = 0; i < 854*480; i++)
+            fb[i] = 0;
+    }
+
+    vblendflag = 0;
+    WUP_SetIRQHandler(0x15, vbl_end, NULL, 0);
+
 
 	u8 buf[16];
 
+    lv_init();
+    lv_tick_set_cb((lv_tick_get_cb_t)WUP_GetTicks);
 
-    /*{
-        // palette -- FFrrggbb
-        u32 pal[256];
-        pal[0] = 0xFF000044;
-        for (i = 1; i < 256; i++)
-            pal[i] = 0xFFFFFFFF;
+    lv_display_t* disp = lv_display_create(854, 480);
 
-        GFX_SetPalette(0, pal, 256);
+    u8* dispbuf1 = (u8*)memalign(16, 854*480/10);
+    u8* dispbuf2 = NULL;//(u8*)memalign(16, 854*480/10);
+    lv_display_set_buffers(disp, dispbuf1, dispbuf2, 854*480/10, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    lv_display_set_flush_cb(disp, flushcb);
 
-        u8* framebuf = (u8*)GFX_GetFramebuffer();
-        for (int y = 0; y < 480; y++)
-        {
-            for (int x = 0; x < 854; x++)
-            {
-                u8 pixel = 0;
-                framebuf[(y * 854) + x] = pixel;
-            }
-        }
-    }
+    u32 palette[256];
+    for (int i = 0; i < 256; i++)
+        palette[i] = 0xFF000000 | (i * 0x010101);
+    GFX_SetPalette(0, palette, 256);
+
+    lv_indev_t* touch = lv_indev_create();
+    lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
+    lv_indev_set_read_cb(touch, readtouch);
+
+    lv_example_button_1();
+    //lv_example_button_2();
+    //lv_example_button_3();
+
+    //Console_OpenDefault();
 
 
-	DrawText(8, 8, "Hello world");
-	DrawText(8, 8+16, "haxing the WiiU gamepad ayyy");
-	DrawHex(8, 8+32, 0x12345678);
-	DrawHex(8, 8+48, *(vu32*)0xF0000000);
-	DrawHex(8, 8+64, GetCP15Reg(0, 0, 0));
-	DrawHex(8, 8+80, GetCP15Reg(0, 0, 1));
-	DrawHex(8, 8+96, GetCP15Reg(0, 0, 2));
-	DrawHex(8, 8+112, GetCP15Reg(1, 0, 0));
-	//DrawHex(8, 8+128, GetCP15Reg(6, 0, 0));
-	//DrawHex(8, 8+144, GetCP15Reg(6, 0, 0));*/
-    /*for (int i = 0; i < 8; i++)
-    {
-        DrawHex(8, 8 + 128 + (32*i), GetCP15Reg(6, i, 0));
-        //DrawHex(8, 8 + 144 + (32*i), GetCP15Reg(6, i, 1));
-    }*/
-
-    Console_OpenDefault();
+    printf("hardware: %08X\n", *(vu32*)0xF0000000);
+    printf("SD caps1: %08X\n", *(vu32*)0xE0010040);
+    printf("SD caps2: %08X\n", *(vu32*)0xE0010044);
+    printf("SD version: %04X\n", *(vu16*)0xE00100FE);
+    printf("UIC: %02X, %d\n", *(vu8*)0x3FFFFC, UIC_GetState());
 
 
 
+    //printf("derp=%02X %02X\n", derp[0], derp[1]);
 
-    buf[0] = *(u8*)0x3FFFFC;
-    //buf[1] = UIC_GetState();
 
-    //send_string("dfgfdg\n");
-    //send_binary(buf, 2);
 
-    //*(vu32*)0x80000000 = 2;
-
-    //printf("printf test: %08X\n", *(vu32*)0xF0000000);
-    //flash_testbench();
-    //uart_testbench();
-    /*u32 zart = REG_IRQ_CURRENT;
-    printf("current IRQ = %08X\n", zart);
-    printf("reg=%08X\n", *(vu32*)0xF00013FC);
-    printf("reg=%08X\n", *(vu32*)0xF00019FC);
-    printf("reg=%08X\n", *(vu32*)0xF00013F8);
-    printf("reg=%08X\n", *(vu32*)0xF00019F8);
-
-    *(vu32*)0xF00019D8 = 1;
-    *(vu32*)0xF00019DC = 0;
-    *(vu32*)0xF00013FC = 0;
-    *(vu32*)0xF00013F8 = 6;
-    printf("13FC=%08X\n", *(vu32*)0xF00013FC);
-    printf("13F8=%08X\n", *(vu32*)0xF00013F8);
-    printf("19FC=%08X\n", *(vu32*)0xF00019FC);
-    printf("19F8=%08X\n", *(vu32*)0xF00019F8);
-
-    *(vu32*)0xF00013FC = 2;
-    printf("13FC=%08X\n", *(vu32*)0xF00013FC);
-    printf("13F8=%08X\n", *(vu32*)0xF00013F8);
-    printf("19FC=%08X\n", *(vu32*)0xF00019FC);
-    printf("19F8=%08X\n", *(vu32*)0xF00019F8);
-
-    *(vu32*)0xF00013F8 = 3;
-    printf("13FC=%08X\n", *(vu32*)0xF00013FC);
-    printf("13F8=%08X\n", *(vu32*)0xF00013F8);
-    printf("19FC=%08X\n", *(vu32*)0xF00019FC);
-    printf("19F8=%08X\n", *(vu32*)0xF00019F8);
-
-    *(vu32*)0xF00019FC = 4;
-    printf("13FC=%08X\n", *(vu32*)0xF00013FC);
-    printf("13F8=%08X\n", *(vu32*)0xF00013F8);
-    printf("19FC=%08X\n", *(vu32*)0xF00019FC);
-    printf("19F8=%08X\n", *(vu32*)0xF00019F8);
-
-    *(vu32*)0xF00019F8 = 5;
-    printf("13FC=%08X\n", *(vu32*)0xF00013FC);
-    printf("13F8=%08X\n", *(vu32*)0xF00013F8);
-    printf("19FC=%08X\n", *(vu32*)0xF00019FC);
-    printf("19F8=%08X\n", *(vu32*)0xF00019F8);*/
-
-    /*u32 reg = 0xF0000404;
-    u32 old = *(vu32*)reg;
-    *(vu32*)reg = 0xFFFFFFFF;
-    u32 fazr = *(vu32*)reg;
-    *(vu32*)reg = old;
-    printf("mask = %08X\n", fazr);*/
-
-    /* *(vu32*)0xF0004054 = 0x11223344;
-    printf("write32: %08X\n", *(vu32*)0xF0004054);
-    *(vu16*)0xF0004056 = 0x5678;
-    printf("write16: %08X\n", *(vu32*)0xF0004054);
-    *(vu8*)0xF0004057 = 0x9A;
-    printf("write8: %08X\n", *(vu32*)0xF0004054);
-
-    // 0xE0010000
-    *(vu32*)0xF0009474 = 0x11223344;
-    printf("write32: %08X\n", *(vu32*)0xF0009474);
-    *(vu16*)0xF0009474 = 0x5678;
-    printf("write16: %08X\n", *(vu32*)0xF0009474);
-    *(vu8*)0xF0009474 = 0x9A;
-    printf("write8: %08X\n", *(vu32*)0xF0009474);*/
-
-    //printf("mask=%08X %08X\n", *(vu32*)0xF00013F8, *(vu32*)0xF00013FC);
-    //*(vu32*)0xF00013F8 = 9;
-    //printf("mask=%08X %08X\n", *(vu32*)0xF00013F8, *(vu32*)0xF00013FC);
-
-    /*WUP_DelayMS(10);
-    printf("after IRQ:\n");
-    for (int i = 0; i <= 15; i++)
-        printf("%d. %08X\n", i, irqlog[i]);*/
-    // 13F8 and 19F8 read as zero
-    // 13FC and 19FC read as the last value
-
-    printf("caps1: %08X\n", *(vu32*)0xE0010040);
-    printf("caps2: %08X\n", *(vu32*)0xE0010044);
-    printf("version: %04X\n", *(vu16*)0xE00100FE);
-    printf("ver2: %08X\n", *(vu32*)0xE00100FC);
-
-    /*UIC_WriteEnable();
-    WUP_DelayMS(1);
-    printf("write enable\n");
-    for (u32 i = 0; i < 0x700; i+=0x80)
-    //for (u32 i = 0x100; i < 0x700; i+=0x80)
-    {
-        UIC_WriteEEPROM(i, &uic_config_bin[i], 0x80);
-        printf("wrote %04X\n", i);
-       // break;
-    }
-    printf("written\n");
-    WUP_DelayMS(1);
-    UIC_WriteDisable();
-    WUP_DelayMS(140);
-    printf("dsiable\n");*/
-    // writing 0200 causes reset??
-
-    /*u32 derp1, derp2;
-    //UIC_test(0, (u8*)&derp1, 4);
-    //printf("test1=%08X\n", derp1);
-    //UIC_test(0x700, (u8*)&derp2, 4);
-    //UIC_ReadEEPROM(0, (u8*)&derp2, 4);
-    UIC_test(0, (u8*)&derp2, 4);
-    printf("test2=%08X\n", derp2);
-
-    u8* eep = (u8*)malloc(0x700);
-    for (u32 i = 0; i < 0x700; i+=0x80)
-    {
-        UIC_ReadEEPROM(i, &eep[i], 0x80);
-    }
-    dump_data(eep, 0x700);
-    printf("eeprom dumped\n");*/
 
     for (;;)
     {
@@ -595,312 +674,65 @@ void main()
     }
     printf("UIC came up\n");
 
-#if 0
+#if 1
     // 69EF30B0
     // 01101001 11101111 00110000 10110000
     // TODO move this to WUP_Init()
     int a = SDIO_Init();
-    printf("a=%d\n", a);
+    //uictest();
     int b = Wifi_Init();
-    printf("%d caps: %08X\n", b, *(vu32*)0xE0010040);
+    printf("wifi init res=%d/%d\n", a, b);
+    //uictest();
 
-    WUP_DelayMS(2000);
+    /*WUP_DelayMS(2000);
     //for (;;)
     {
         //Wifi_StartScan(1);
-        Wifi_StartScan2(1);
-        WUP_DelayMS(10);
-        //WUP_DelayMS(100);
+        //Wifi_StartScan2(1);
+        //WUP_DelayMS(10);
+        WUP_DelayMS(1000);
     }
     //Wifi_StartScan(1);
     Wifi_JoinNetwork();
     //Wifi_JoinNetwork2();
-    printf("joined network, maybe\n");
+    printf("joined network, maybe\n");*/
 
-    //dump_data((u8*)0x200000, 0xE00);
-
-    ((u8*)0x200000)[0] = *(u8*)0x3FFFFC;
+    printf("press A to try joining\n");
+    printf("press B to scan for networks\n");
+    printf("press X to send test packet\n");
+    printf("press UP to change WSEC, DOWN to change WPAAUTH\n");
 #endif
 
-    /*for (int i = 0; i < 256; i++)
-        ((u8*)0x200000)[i] = i;
-
-    dump_data((u8*)0x200000, 256);*/
-
-    /*for (u32 i = 0; i < 0x700; i+=128)
-    {
-        UIC_ReadEEPROM(i, (u8*)(0x200000+i), 128);
-    }
-    dump_data((u8*)0x200000, 0x700);*/
-
-    /*u8* fbtest = (u8*)GFX_GetFramebuffer();
-
-    *(vu32*)0xF0000408 = 0;
-    for (int y = 0; y < 480; y++)
-    {
-        for (int x = 0; x < 854; x++)
-        {
-            u32 pixel = 0;
-            *(u8*)&fbtest[(y * 854) + x] = pixel;
-        }
-    }
-    u32 time1 = *(vu32*)0xF0000408;
-
-    *(vu32*)0xF0000408 = 0;
-    *(vu32*)0xF0004184 = 0x430;
-    *(vu32*)0xF0004188 = 854;
-    *(vu32*)0xF000418C = 854; // source stride
-    *(vu32*)0xF0004190 = 854; // destination stride
-    *(vu32*)0xF0004194 = (854*480)-1; // byte count - 1
-    *(vu32*)0xF0004198 = 0;//0x200000; // source
-    *(vu32*)0xF000419C = (u32)fbtest; // destination
-    *(vu32*)0xF00041A0 = 0;  // fill value
-    *(vu32*)0xF00041A4 = 0;     // weird
-    *(vu32*)0xF0004180 |= 1;
-    while (!irqnum) WaitForIRQ();
-    u32 time2 = *(vu32*)0xF0000408;*/
-
-#if 0
-    AudioAmp_SetPage(0x01);
-    u8 fa = AudioAmp_ReadReg(0x2F);
-    printf("fa=%02X\n", fa);
-    AudioAmp_SetPage(0x00);
-    u8 zi = AudioAmp_ReadReg(0x41);
-    printf("zi=%02X\n", zi);
-    AudioAmp_SetPage(0x01);
-    AudioAmp_WriteReg(0x2F, 0x32);
-    AudioAmp_SetPage(0x00);
-    AudioAmp_WriteReg(0x53, 0x01);
-    AudioAmp_WriteReg(0x41, 0x00);
-    //AudioAmp_WriteReg(0x41, 0x30);
-    AudioAmp_WriteReg(0x40, 0x02);
-
-    //
-
-    //AudioAmp_WriteReg()
-
-
-    AudioAmp_SetPage(0x01);
-    AudioAmp_WriteReg(0x33, 0x40);
-    AudioAmp_SetPage(0x00);
-    u8 muted = AudioAmp_ReadReg(0x40);
-    printf("muted=%02X\n", muted);
-#endif
-
-    AudioAmp_SetPage(0x01);
-    u8 blah1 = AudioAmp_ReadReg(0x2F);
-    AudioAmp_SetPage(0x00);
-    u8 blah2 = AudioAmp_ReadReg(0x41);
-    AudioAmp_SetPage(0x01);
-    u8 blah3 = AudioAmp_ReadReg(0x2F);
-    blah3 &= ~0x7F;
-    blah3 |= 0x32; // ??
-    AudioAmp_WriteReg(0x2F, blah3);
-    AudioAmp_SetPage(0x01);
-    u8 blah4 = AudioAmp_ReadReg(0x30);
-    printf("init more: %02X %02X %02X %02X\n", blah1, blah2, blah3, blah4);
-
-    // SET VOLUME
-#if 0
-    AudioAmp_SetPage(0x00);
-    AudioAmp_WriteReg(0x41, 0x00); // volume
-    AudioAmp_SetPage(0x00);
-    AudioAmp_WriteReg(0x40, 0x02); // unmute
-    AudioAmp_SetPage(0x00);
-    u8 zorp1 = AudioAmp_ReadReg(0x41);
-    printf("volume: %02X\n", zorp1);
-
-    AudioAmp_SetPage(0x01);
-    AudioAmp_WriteReg(0x33, 0x40); // mic bias?
-
-
-    //init more: 32 81 32 20
-    //volume: 00
-
-    void pett();
-    pett();
-#endif
-
-    /*printf("initial audio regs:\n");
-    for (u32 r = 0xF0005400; r < 0xF0005500; r+=0x10)
-    {
-        printf("%08X:  %08X %08X %08X %08X\n",
-               r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-    }*/
-    // F0005400 = 8000
-    // F0005404 = 1F00
-    // F000542C = F
-    // F00054B8 = 10100000
-    // F00054C4 = 111
-    // rest is 0
-
-
-    // F00054C4 reads as 111
-    printf("praat %08X %08X\n", *(vu32*)0xF00054C4,*(vu32*)0xF0005444);
-    *(vu32*)0xF00054C4 = 0x111;
-    //*(vu32*)0xF0005444 = 0x40018128;
-    // starts at 8000
-    u32 fazil = *(vu32*)0xF0005400;
-    printf("fazil1 = %08X\n", fazil);
-    fazil &= ~(1<<4);
-    fazil &= ~(1<<5);
-    fazil &= ~(0x1F<<6);
-    fazil |= (1<<6);
-    fazil &= ~(0x1F<<11);
-    fazil &= ~(1<<20);
-    fazil &= ~(1<<21);
-    fazil |= (1<<19);
-    fazil &= ~(1<<18);
-    fazil |= (1<<0);
-    *(vu32*)0xF0005400 = fazil;
-    //printf("fazil2 = %08X\n", fazil);
-    *(vu32*)0xF0005420 |= 1;
-    //printf("fazil3 = %08X\n", fazil);
-    *(vu32*)0xF000541C |= 1;
-    //printf("fazil4 = %08X\n", fazil);
-    *(vu32*)0xF000542C = 0;
-    //printf("fazil5 = %08X\n", fazil);
-    WUP_SetIRQHandler(0x17, audioirq, NULL, 0);
-    //WUP_SetIRQHandler(0x18, irq18, NULL, 0);
-    //WUP_SetIRQHandler(0x1E, irq1E, NULL, 0);
-    audioflag = 0;
-    f1 = 0; f2 = 0;
-    flag18 = 0;
-    flag1E = 0;
-    printf("fazil6 = %08X\n", *(vu32*)0xF0005400);
-    // 00080041
-
-
-    u8* tmp = (u8*)malloc(0x40010);
-    u32 atmp = (u32)&tmp[0];
-    atmp = (atmp + 0xF) & ~0xF;
-    u16* buffer = (u16*)atmp;
-    printf("buffer=%08X (tmp=%08X)\n", (u32)&buffer[0], (u32)&tmp[0]);
-
-    for (int i = 0; i < 0x20000; i++)
-    {
-        //buffer[i] = (i & 0x40) ? 0x7FFF : 0;
-        buffer[i] = (i & 0x40) ? 0x7FFF : 0x8000;
-        //buffer[i] = (i & 0x40) ? ((i&1)?0x7FFF:0x8000) : 0x8000; // odd only - right
-        //buffer[i] = (i & 0x40) ? ((i&1)?0x8000:0x7FFF) : 0x8000; // even only - left
-        //buffer[i] = (i & 0x40) ? ((i&1)?0x6666:0x42D2) : 0;
-    }
-    DC_FlushRange(buffer, 0x40000);
-
-
-    //*(vu32*)0xF0005408 = 0x380000;
-    //*(vu32*)0xF000540C = 0x381000;
-    //*(vu32*)0xF000540C = 0x3F0000;
-    *(vu32*)0xF0005408 = (u32)&buffer[0];
-    *(vu32*)0xF000540C = (u32)&buffer[0x20000];
-    /**(vu32*)0xF00054A0 = 0x38200;
-    printf("pet=%08X\n", *(vu32*)0xF00054A0);
-    *(vu32*)0xF00054A4 = (*(vu32*)0xF00054A0) + 0xC0;
-    *(vu32*)0xF00054A8 = *(vu32*)0xF00054A0;*/
-    // read A8 to init FIFO from
-    printf("a8=%08X\n", *(vu32*)0xF00054A8);
-    printf("04=%08X\n", *(vu32*)0xF0005404);
-    printf("44=%08X\n", *(vu32*)0xF0005444);
-    *(vu32*)0xF0005404 |= 0x20;
-    //*(vu32*)0xF0005444 = 0x40018128; // FIXME
-    // read at 35CC, check bit7
-    printf("04=%08X\n", *(vu32*)0xF0005404);
-    printf("44=%08X\n", *(vu32*)0xF0005444);
-    printf("04=%08X\n", *(vu32*)0xF0005404);
-    *(vu32*)0xF0005424 = 0x14;//8;
-    printf("2c=%08X\n", *(vu32*)0xF000542C);
-    *(vu32*)0xF000542C |= 0xC;
-    printf("08=%08X\n", *(vu32*)0xF0005408);
-    *(vu32*)0xF0005410 = *(vu32*)0xF0005408;
-    printf("fazil7 = %08X\n", *(vu32*)0xF0005400);
-
-#if 1
-    printf("2c=%08X\n", *(vu32*)0xF000542C);
-    *(vu32*)0xF000542C &= ~0x8;
-    printf("20=%08X\n", *(vu32*)0xF0005420);
-    *(vu32*)0xF0005420 |= 0x1;
-    //*(vu32*)0xF0005410 = 0x380000;
-    *(vu32*)0xF0005410 = (u32)&buffer[0];
-    printf("20=%08X\n", *(vu32*)0xF0005420);
-    printf("pet\n");
-    // causes IRQ 17 to start triggering
-    *(vu32*)0xF0005420 |= 0x4;
-    //while (!(*(vu32*)0xF0005434 & (1<<2)));
-    printf("poot %08X\n", *(vu32*)0xF0005434);
-    printf("2c=%08X\n", *(vu32*)0xF000542C);
-    *(vu32*)0xF000542C &= ~4;
-#endif
-    //*(vu32*)0xF0005420 |= 0x1;
-    //*(vu32*)0xF0005420 |= 0x4;
-
-    //*(vu32*)0xF0005400 &= ~(1<<19);
-    *(vu32*)0xF0005400 |= (1<<19);
-    *(vu32*)0xF0005400 |= (1<<22);
-    /**(vu32*)0xF0005400 &= ~(0x1F<<6);
-    *(vu32*)0xF0005400 |= (1<<6);
-    *(vu32*)0xF0005400 &= ~(0x1F<<11);
-    *(vu32*)0xF0005400 |= (31<<11);*/
-    //*(vu32*)0xF0005400 |= (1<<18);
-    printf("04=%08X\n", *(vu32*)0xF0005404);
-    *(vu32*)0xF0005404 &= ~0x80;
-    printf("04=%08X\n", *(vu32*)0xF0005404);
-    *(vu32*)0xF0005424 = 8;
-    printf("2c=%08X\n", *(vu32*)0xF000542C);
-    *(vu32*)0xF000542C |= 0xC;
-    printf("08=%08X\n", *(vu32*)0xF0005408);
-    printf("10=%08X\n", *(vu32*)0xF0005410);
-    //*(vu32*)0xF0005404 = 0x1FA0;
-    printf("zarmf=%08X\n", *(vu32*)0xF0005404);
-    //*(vu32*)0xF0005400 |= 0x00800000;
-    //*(vu32*)0xF0005420 |= 0xFFFFFFFF; // breaks playback
-    //*(vu32*)0xF0005444 = 0;// |= 0xFFFFFFFF;
-    // must be both cleared for audio to work
-    *(vu32*)0xF0005400 &= ~0x400000;
-    *(vu32*)0xF0005400 &= ~0x80000;
-    // causes IRQ 17
-    // starts playback?
-    // IRQ triggers 40537 microseconds after this
-    u32 startpos = *(vu32*)0xF0000408;
-    *(vu32*)0xF0005410 = *(vu32*)0xF0005408;
-    /*for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
-        printf("%08X/%08X/%08X/%08X\n", *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-    WUP_DelayMS(2000);*/
-    WUP_DelayMS(8);
-    for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
-        printf("%08X/%08X/%08X/%08X\n", *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-
-    // when IRQ bit3 comes up:
-    // pos=00380F60 when 5424=0x14
-    // pos=00380FC0 when 5424=0x08
-
-    // bit6-10:
-    // time to play 1968 samples
-    // 0 = 40523
-    // 1 = 40527
-    // 2 = 40537
-    // 3 = 40529
-    // 31 = 40522
-    //
-    // 11-15/6-10
-    // 1/1 = 40538
-    // 2/1 = 40521
-    // 31/1 = 40541
+    //clk_testbench();
+    //shit_testbench();
+    //flash_testbench();
+    //flash_testbench2();
 
 
     int frame = 0;
     int d = 0;
     u32 regaddr = 0xF0005000;
     u16 oldval = 0;
+    u8 poop = 0;
+
+    u32 wsecvals[] = {2, 4, 6, -1};
+    u32 wpaauthvals[] = {4, 0x80, -1};
+    int wsecid = 0;
+    int wpaauthid = 0;
+
+    u32 lastvbl = 0;
+    int derp = 4;
 	for (;;)
 	{
 		frame++;
 		if (frame >= 15) frame = 0;
 
         sInputData* test = Input_Scan();
+        inputdata = test;
 
         // TODO: integrate this elsewhere
-        Audio_SetVolume(test->AudioVolume);
-        Audio_SetOutput((test->PowerStatus & (1<<5)) ? 1:0);
+        //Audio_SetVolume(test->AudioVolume);
+        //Audio_SetOutput((test->PowerStatus & (1<<5)) ? 1:0);
 
         /*if (test->ButtonsPressed & BTN_X)
         {
@@ -920,176 +752,192 @@ void main()
             printf("Pressed DOWN! this is going to be a really long line, the point is to test how far the console thing can go and whether it handles this correctly\n");
 */
 
-        if (test->ButtonsPressed & BTN_UP)
+        /*if (test->ButtonsPressed & BTN_A)
         {
-            *(vu32*)regaddr = oldval;
-            regaddr += 4;
-            oldval = *(vu32*)regaddr;
-            printf("CUR IO: %08X = %04X\n", regaddr, oldval);
+            printf("attempting to join network\n");
+            Wifi_JoinNetwork(wsecvals[wsecid], wpaauthvals[wpaauthid]);
         }
-        if (test->ButtonsPressed & BTN_DOWN)
-        {
-            *(vu32*)regaddr = oldval;
-            regaddr -= 4;
-            oldval = *(vu32*)regaddr;
-            printf("CUR IO: %08X = %04X\n", regaddr, oldval);
-        }
-        if (test->ButtonsPressed & BTN_A)
-        {
-            /*oldval = *(vu32*)regaddr;
-            *(vu32*)regaddr = 0xC300;
-            printf("SET: %08X = %04X -> %04X\n", regaddr, oldval, *(vu32*)regaddr);*/
-            //AudioAmp_SetPage(0);
-            /*u8 fart = AudioAmp_ReadReg(0x43);
-            printf("fart=%02X\n", fart);*/
-            /*for (int a = 0; a < 0x100; a+=0x10)
-            {
-                printf("%02X:  ", a);
-                for (int b = 0; b < 0x10; b++)
-                {
-                    u8 reg = a+b;
-                    u8 val = AudioAmp_ReadReg(reg);
-                    printf("%02X ", val);
-                }
-                printf("\n");
-            }*/
-            /*
-             * register mask:
-             *  F0005400:  01FFFFFF 0000FFFF 0FFFFFF8 0FFFFFF8
-                F0005410:  0FFFFFF8 00000000 0000FFFF 0000001F
-                F0005420:  00000103 01FFFFFF 00000000 0000003F
-                F0005430:  00000000 00008008 00000000 00000000
-                F0005440:  00000000 C01FF3FD 01FFFFFF 00000000
-                F0005450:  00000000 00000000 00000000 00000000
-                F0005460:  00000000 00000000 00000000 00000000
-                F0005470:  00000000 00000000 00000000 00000000
-                F0005480:  00000000 00000000 00000000 00000000
-                F0005490:  00000000 00000000 00000000 00000000
-                F00054A0:  01FFFFFF 01FFFFFF 01FFFFFF 00000000
-                F00054B0:  00000000 00000000 10100000 00000000
-                F00054C0:  00000000 00000111 00000000 00000000
-                F00054D0:  00000000 00000000 00000000 00000000
-                F00054E0:  00000000 00000000 00000000 00000000
-                F00054F0:  00000000 00000000 00000000 00000000
-             */
-            for (u32 r = 0xF0005400; r < 0xF0005500; r+=0x4)
-            {
-                if (r==0xF0005408) continue;
-                if (r==0xF000540C) continue;
-                if (r==0xF0005410) continue;
-                if (r==0xF0005414) continue;
-                *(vu32 * )(r) = 0xFFFFFFFF;
-            }
-            for (u32 r = 0xF0005400; r < 0xF0005500; r+=0x10)
-            {
-                printf("%08X:  %08X %08X %08X %08X\n",
-                       r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-            }
-        }
+
         if (test->ButtonsPressed & BTN_B)
         {
-            /**(vu32*)regaddr = oldval;
-            printf("RESET: %08X = %04X\n", regaddr, oldval);*/
-            printf("reg=%08X pos=%08X (%08X) cnt=%08X time=%d vol=%d audioflag=%d/%d/%d %d %d  intv=%d  pwr=%02X\n",
-                   *(vu32*)0xF0005400,
-                   *(vu32*)0xF0005414, schmi,
-                   *(vu32*)0xF0005428,
-                   schmitime-startpos,
-                   test->AudioVolume,
-                   audioflag, f1, f2,
-                   flag18, flag1E, intv1E,
-                   test->PowerStatus);
+            printf("scanning for networks\n");
+            Wifi_StartScan2(1);
         }
+
         if (test->ButtonsPressed & BTN_X)
         {
-            printf("BEEP!\n");
-            u32 duration = 0x10000;//0x100000;
-            u16 sin = 0x10D8;//71;
-            u16 cos = 0x7EE3;//65534;
-            AudioAmp_SetPage(0);
-            AudioAmp_WriteReg(73, (duration>>16)&0xFF);
-            AudioAmp_WriteReg(74, (duration>>8)&0xFcF);
-            AudioAmp_WriteReg(75, duration&0xFF);
-            AudioAmp_WriteReg(76, sin>>8);
-            AudioAmp_WriteReg(77, sin&0xFF);
-            AudioAmp_WriteReg(78, cos>>8);
-            AudioAmp_WriteReg(79, cos&0xFF);
-            AudioAmp_WriteReg(72, 0x80);
+            printf("sending test packet\n");
+            Wifi_Test();
+        }*/
 
-            AudioAmp_WriteReg(0x40, 0x0E);
-            for (;;)
-            {
-                u8 derp = AudioAmp_ReadReg(0x26);
-                if ((derp & 0x11) == 0x11) break;
-            }
-            AudioAmp_WriteReg(0x0B, 0x02);
-            //AudioAmp_WriteReg(71, 0x80);
-            AudioAmp_WriteReg(71, 0x80 | 0x14);
-            AudioAmp_WriteReg(0x0B, 0x82);
-            AudioAmp_WriteReg(0x40, 0x02);
-        }
-        if (test->ButtonsPressed & BTN_Y)
+        if (test->ButtonsPressed & BTN_B)
         {
-            /*AudioAmp_SetPage(0);
-            u8 reg = AudioAmp_ReadReg(71);
-            printf("beep status = %02X\n", reg);*/
-            *(vu32*)0xF0005410 = *(vu32*)0xF0005408;
+            //printf("lucario?\n");
+            //LoadBinaryFromFlash(0x500000);
+            void Wifi_JoinNetwork(u32, u32);
+            Wifi_JoinNetwork(6, 0x84);
         }
 
-        //*(vu32*)regaddr |= 0xC200;
-        //*(vu32*)regaddr ^= 0x100;
-
+        if (test->ButtonsPressed & BTN_A)
+        {
+            Wifi_StartScan(scantest);
+            //printf("rebooting?\n");
+            //LoadBinaryFromFlash(0x100000);
+            //flash_testbench2();
 #if 0
-        ClearRect(8+(16*8), 8+64+256, 8*8, 16*2);
-        DrawHex(8+(16*8), 8+64+256, (u32)derp);
-        //DrawHex(8+(16*8), 8+64+256+16, time2);
+            AudioAmp_DeInit();
+            //UIC_SetBacklight(0);
+            LCD_SetBrightness(-1);
+            *(vu32*)0xF0005100 = 0xC200;
+            //Wifi_DeInit();
+            WUP_DelayUS(60);
 
-		//if (!frame)
-		//if (0)
-        if (!d)
-		{
-            d = 1;
-			//u32 base = 0x003FFE00;
-			//u32 base = 0xE0010000;
-			//u32 base = 0xF0004100;
-			u32 base = 0x200000;
-			//u32 base = 0x1C0000;
-			ClearRect(8+(16*8), 8+64, 8*(17*4), 16*(16));
-			for (int r = 0; r < 16; r++)
-			{
-				u32 val = *(vu32*)(base+(r*4));
+            /*REG_DMA_CNT = 0;
 
-				DrawHex(8+(16*8), 8+64+(r*16), val);
-			}
-			for (int r = 0; r < 16; r++)
-			{
-				u32 val = *(vu32*)(base+0x40+(r*4));
+            REG_SPI_CNT = 0;
+            REG_SPI_SPEED = 0;*/
 
-				DrawHex(8+(26*8), 8+64+(r*16), val);
-			}
-			for (int r = 0; r < 16; r++)
-			{
-				u32 val = *(vu32*)(base+0x80+(r*4));
+            // trigger soft reset
+            //DisableIRQ();
+            *(vu32*)0xF0001200 = 0xFFFF;
+            *(vu32*)0xF0001204 = 0xFFFF;
 
-				DrawHex(8+(36*8), 8+64+(r*16), val);
-			}
-			for (int r = 0; r < 16; r++)
-			{
-				u32 val = *(vu32*)(base+0xC0+(r*4));
+            *(vu32*)0xF0004400 = 0;
+            *(vu32*)0xF0004424 = 0;
 
-				DrawHex(8+(46*8), 8+64+(r*16), val);
-			}
-			/*for (int r = 0; r < 16; r++)
-			{
-				u32 val = oldregs[r];
+            *(vu32*)0xF00050EC = 0x8000;    // clock
+            *(vu32*)0xF00050F0 = 0x0000;    // MISO
+            *(vu32*)0xF00050F4 = 0x8000;    // MOSI
+            *(vu32*)0xF00050F8 = 0x8000;    // FLASH CS
+            *(vu32*)0xF00050FC = 0x8000;    // UIC CS
 
-				DrawHex(8+(56*8), 8+64+(r*16), val);
-			}*/
-			//DrawHex(8+(9*8), 8+32, *(vu32*)0xF0009484);
-			// 00FF0000
-		}
+            //u32 zzn = *(vu32*)0xF0000030;
+            //*(vu32*)0xF0000030 &= ~0x300;
+            //printf("zzn=%08X/%08X\n", zzn, *(vu32*)0xF0000030);
+            //for(;;);
+
+            *(vu32*)0xF0000058 = 0xFFFFFFFB;
+            //*(vu32*)0xF0000058 = 0x3;
+            *(vu32*)0xF0000058 = 0;
+            *(vu32*)0xF0000004 = 0;
+            *(vu32*)0xF0000004 = 1;
+            for (;;);
 #endif
-		GFX_WaitForVBlank();
+        }
+
+        if (test->ButtonsPressed & BTN_UP)
+        {
+            /*wsecid++;
+            if (wsecvals[wsecid] == -1)
+                wsecid = 0;
+            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);*/
+            void LCD_test(int);
+            printf("der=%d\n", derp);
+            LCD_test(derp);
+            derp++;
+        }
+
+        if (test->ButtonsPressed & BTN_DOWN)
+        {
+            wpaauthid++;
+            if (wpaauthvals[wpaauthid] == -1)
+                wpaauthid = 0;
+            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);
+        }
+
+        /**(vu32*)regaddr ^= 0x0100;
+        if (test->ButtonsPressed & BTN_LEFT)
+        {
+            regaddr += 4;
+            *(vu32*)regaddr = 0xC200;
+            printf("toggling register %08X\n", regaddr);
+        }*/
+        /*if (test->ButtonsPressed & BTN_LEFT)
+        {
+            d++;
+            d &= 31;
+            printf("reset bit: %d\n", d);
+        }*/
+        // X offset: min=2 max=C2 mask=7FF
+        // Y offset: min=7 max=1E7?? mask=7FF
+        // F0009404
+        // low / vbl
+        // 0x1FE = 940
+        // 0x208 = 1266
+        // 0x212 = 1593
+        // max = 7FF
+        // step ~= 32.6ns
+        // high: max = 1FF
+        // value less than 0x100 makes vblank a bit longer? (36ns)
+        // 533970 pixels in ~16638ns
+        // 1 pixel in X ns
+#define reg 0xF000950C
+#define step 10
+        if (test->ButtonsPressed & BTN_LEFT)
+        {
+            (*(vu32*)reg) -= step;
+            printf("reg=%08X\n", *(vu32*)reg);
+        }
+        if (test->ButtonsPressed & BTN_RIGHT)
+        {
+            (*(vu32*)reg) += step;
+            printf("reg=%08X\n", *(vu32*)reg);
+        }
+        // aaagdsrdfdddd
+        if (test->ButtonsPressed & (BTN_Y | BTN_SYNC))
+        {
+            //resettest(d);
+            AudioAmp_DeInit();
+            //UIC_SetBacklight(0);
+            LCD_SetBrightness(-1);
+            *(vu32*)0xF0005100 = 0xC200;
+            Wifi_DeInit();
+            WUP_DelayUS(60);
+
+            u8 zarmf = 0;
+            UIC_SendCommand(0x17, &zarmf, 1, NULL, 0);
+            WUP_DelayUS(60);
+
+            u8 zirmf[4] = {1, 0, 0, 0};
+            UIC_SendCommand(0x1B, zirmf, 4, NULL, 0);
+            WUP_DelayUS(60);
+
+            //UIC_SetState(9);
+            UIC_SetState(5);
+            //UIC_SendCommand(0x16, NULL, 0, NULL, 0);
+            /*WUP_DelayUS(60);
+            u8 fark = 44;
+            UIC_SendCommand(0x13, NULL, 0, &fark, 1);
+            printf("fark=%d\n", fark);*/
+            //UIC_SetBacklight(1);
+            *(vu32*)0xF0000410 = 0;
+            *(vu32*)0xF0000420 = 0;
+            DisableIRQ();
+            for (;;);
+        }
+
+        Wifi_Update();
+
+        GFX_WaitForVBlank();
+        /*u32 vbl = REG_COUNTUP_VALUE;
+
+        vblendflag = 0;
+        while (!vblendflag) WaitForIRQ();
+        u32 vbl2 = REG_COUNTUP_VALUE;
+
+        u32 vbltime = vbl2 - vbl;
+        u32 frametime = vbl - lastvbl;
+        lastvbl = vbl2;
+        printf("frame: reg=%08X disp=%010d blk=%010d tot=%010d\n", *(vu32*)reg, frametime, vbltime, frametime+vbltime);*/
+
+        // 5E8000 = E0000 * 108 / 16
+
+		/*GFX_WaitForVBlank();
+        u32 derp = lv_task_handler();
+        printf("%d\n", derp);*/
+        lv_timer_periodic_handler();
+        //u32 next = lv_timer_handler();
+        //if (next) WUP_DelayMS(next);
 	}
 }
 

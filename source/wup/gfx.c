@@ -13,7 +13,8 @@ volatile u8 VBlankFlag;
 void GFX_VBlank(int irq, void* userdata);
 
 // TODO: make this not hardcoded?
-u8* Framebuffer = (u8*)0x380000;
+//u8* Framebuffer = (u8*)0x380000;
+u8* Framebuffer = (u8*)0x300000;
 
 
 void GFX_Init()
@@ -57,8 +58,10 @@ void GFX_Init()
     *(vu32*)0xF0009468 = 0x8;
     *(vu32*)0xF0009464 = 854;
     *(vu32*)0xF000946C = 480;
-    *(vu32*)0xF0009470 = 856;
-    *(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 0;
+    //*(vu32*)0xF0009470 = 856;
+    //*(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 0;
+    *(vu32*)0xF0009470 = 854;
+    *(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 3;
     *(vu32*)0xF00094B4 &= ~0xFFFF;
 
     *(vu32*)0xF0009480 = (*(vu32*)0xF0009480 & 0x14) | 2;

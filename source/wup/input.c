@@ -2,14 +2,48 @@
 
 
 static sInputData InputData;
+static u8 FirstScan;
+
+// pix1 X,Y  pix2 X,Y  raw1 X,Y  raw2 X,Y
+static u16 TouchCalib[8];
 
 
 void Input_Init()
 {
+    u8 tmp[32];
+    int good;
+
+    // read calibration data
+
+    // touchscreen
+
+    good = 1;
+    UIC_ReadEEPROM(0x244, tmp, 16+2);
+    if (!CheckCRC16(tmp, 16))
+    {
+        UIC_ReadEEPROM(0x153, tmp, 16+2);
+        if (!CheckCRC16(tmp, 16))
+        {
+            UIC_ReadEEPROM(0x1D3, tmp, 16+2);
+            if (!CheckCRC16(tmp, 16))
+            {
+                // ??? TODO
+                printf("Input: no valid touchscreen calibration data\n");
+                good = 0;
+            }
+        }
+    }
+
+    if (good)
+        memcpy(TouchCalib, tmp, 16);
+    else
+        memset(TouchCalib, 0, 16); // TODO ??
+
     // TODO
     InputData.ButtonsDown = 0;
     InputData.ButtonsPressed = 0;
     InputData.ButtonsReleased = 0;
+    FirstScan = 1;
 }
 
 
@@ -70,8 +104,19 @@ sInputData* Input_Scan()
 
     if (nvalid > 0)
     {
-        InputData.TouchX = touchX / nvalid;
-        InputData.TouchY = touchY / nvalid;
+        touchX /= nvalid;
+        touchY /= nvalid;
+
+        touchX = (((touchX - TouchCalib[4]) * (TouchCalib[2] - TouchCalib[0])) / (TouchCalib[6] - TouchCalib[4])) + TouchCalib[0];
+        touchY = (((touchY - TouchCalib[5]) * (TouchCalib[3] - TouchCalib[1])) / (TouchCalib[7] - TouchCalib[5])) + TouchCalib[1];
+
+        if (touchX < 0) touchX = 0;
+        else if (touchX > 853) touchX = 853;
+        if (touchY < 0) touchY = 0;
+        else if (touchY > 479) touchY = 479;
+
+        InputData.TouchX = touchX;
+        InputData.TouchY = touchY;
         InputData.TouchPressed = 1;
     }
     else
@@ -87,6 +132,14 @@ sInputData* Input_Scan()
     press |= ((data[0x29] & 0x70) << 2);
     press |= ((data[0x2B] & 0x70) << 5);
     InputData.TouchPressure = press;
+
+    if (FirstScan)
+    {
+        FirstScan = 0;
+
+        InputData.ButtonsPressed = 0;
+        InputData.ButtonsReleased = 0;
+    }
 
     return &InputData;
 }

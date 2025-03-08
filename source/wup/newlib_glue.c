@@ -61,6 +61,7 @@ int _write(int file, char *ptr, int len)
         int irqen = DisableIRQ();
 
         // FPGA debug
+#ifdef FPGA_LOG
         if (1)
         {
             const int csize = 0x3FFF;
@@ -83,6 +84,7 @@ int _write(int file, char *ptr, int len)
                 SPI_Finish();
             }
         }
+#endif
 
         Console_Print(ptr, len);
 
@@ -154,11 +156,28 @@ int _kill(int pid, int sig)
     return -1;
 }
 
+/*void logu32(const char* label, u32 val)
+{
+    char str[8+8+3];
+    for (int i = 0; i < 8; i++)
+        str[i] = label[i];
+    str[8] = '=';
+    for (int i = 9; i < 9+8; i++)
+    {
+        u32 n = val >> 28;
+        val <<= 4;
+        if (n <= 9) str[i] = '0'+n;
+        else str[i] = 'A'+(n-10);
+    }
+    str[9+8] = '\n';
+    str[9+9] = 0;
+    _write(1, str, 8+8+2);
+}*/
+
 caddr_t _sbrk(int incr)
 {
-
     extern char __end__;		/* Defined by the linker */
-    extern char _stack;
+    extern char __stack_start;
     static char *heap_end;
     char *prev_heap_end;
 
@@ -167,7 +186,7 @@ caddr_t _sbrk(int incr)
         heap_end = &__end__;
     }
     prev_heap_end = heap_end;
-    if ((heap_end + incr) > &_stack)
+    if ((heap_end + incr) > &__stack_start)
     {
         errno = ENOMEM;
         return (caddr_t)-1;

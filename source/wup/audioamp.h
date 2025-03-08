@@ -2,6 +2,7 @@
 #define _AUDIOAMP_H_
 
 int AudioAmp_Init();
+void AudioAmp_DeInit();
 
 u8 AudioAmp_ReadReg(u8 reg);
 void AudioAmp_WriteReg(u8 reg, u8 val);

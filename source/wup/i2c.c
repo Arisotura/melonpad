@@ -210,7 +210,7 @@ int I2C_Renesas_Start(u32 bus)
 
         WUP_DelayMS(1);
     }
-
+printf("I2C_Start(%d) fail\n", bus);
     return 0;
 }
 

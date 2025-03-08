@@ -31,6 +31,28 @@
 #define IRQ_VBLANK              0x16
 
 
+// --- Timers -----------------------------------------------------------------
+
+#define REG_TIMER_PRESCALER     *(vu32*)0xF0000400
+#define REG_COUNTUP_PRESCALER   *(vu32*)0xF0000404
+#define REG_COUNTUP_VALUE       *(vu32*)0xF0000408
+#define REG_TIMER_CNT(i)        *(vu32*)(0xF0000410 + ((i)*0x10))
+#define REG_TIMER_VALUE(i)      *(vu32*)(0xF0000414 + ((i)*0x10))
+#define REG_TIMER_TARGET(i)     *(vu32*)(0xF0000418 + ((i)*0x10))
+
+// REG_TIMER_CNT settings
+#define TIMER_UNK0              (1<<0)
+#define TIMER_ENABLE            (1<<1)
+#define TIMER_DIV_2             (0<<4)
+#define TIMER_DIV_4             (1<<4)
+#define TIMER_DIV_8             (2<<4)
+#define TIMER_DIV_16            (3<<4)
+#define TIMER_DIV_32            (4<<4)
+#define TIMER_DIV_64            (5<<4)
+#define TIMER_DIV_128           (6<<4)
+#define TIMER_DIV_256           (7<<4)
+
+
 // --- DMA --------------------------------------------------------------------
 
 #define REG_DMA_CNT             *(vu32*)0xF0004000

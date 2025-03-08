@@ -59,6 +59,7 @@ void UIC_Init()
     // TODO: check command 7F also?
 
     u8 uictype = *(u8*)0x3FFFFC;
+    printf("uictype=%02X\n", uictype);
     if (uictype == 0x2F || uictype == 0x3F)
         UICGood = 1;
     else
@@ -75,12 +76,28 @@ void UIC_Init()
         // The wakeup event will reset the CPU.
 
         UICState = UIC_GetState();
+        printf("uic=%d\n", UICState);
         if (UICState == 11)
         {
             UIC_SetState(3);
             DisableIRQ();
             for (;;);
         }
+    }
+}
+
+void uictest()
+{
+    if (UICState == 11)
+    {
+        LCD_SetBrightness(-1);
+        *(vu32*)0xF0005100 = 0xC200;
+        Wifi_DeInit();
+        WUP_DelayUS(60);
+
+        UIC_SetState(3);
+        DisableIRQ();
+        for (;;);
     }
 }
 
@@ -120,6 +137,7 @@ void UIC_SendCommand(u8 cmd, u8* in_data, int in_len, u8* out_data, int out_len)
         SPI_Read(out_data, out_len);
     }
 
+    WUP_DelayUS(60);
     SPI_Finish();
 }
 

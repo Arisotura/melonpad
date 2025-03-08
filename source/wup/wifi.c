@@ -1,6 +1,8 @@
 #include <wup/wup.h>
 #include <malloc.h>
 
+#include "wifi_ioctl.h"
+
 
 #ifndef OFFSETOF
 #define	OFFSETOF(type, member)	((u32)&((type*)0)->member)
@@ -40,11 +42,18 @@ typedef struct
 sPacket* PktQueueHead;
 sPacket* PktQueueTail;
 
+static u8 Scanning;
+static fnScanCb ScanCB;
+static sScanInfo* ScanList;
+
 void Wifi_ResetRxFlags(u8 flags);
 void Wifi_WaitForRx(u8 flags);
 
+int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u32 len_out);
 void Wifi_InitIoctls();
 void send_binary(u8* data, int len);
+void dump_data(u8* data, int len);
+void Wifi_DumpRAM();
 
 int Wifi_Init()
 {
@@ -52,6 +61,8 @@ int Wifi_Init()
 
     PktQueueHead = NULL;
     PktQueueTail = NULL;
+
+    ScanList = NULL;
 
     u32 regval;
 
@@ -176,14 +187,14 @@ int Wifi_Init()
         regval = 8;
         SDIO_WriteCardRegs(1, 0x10008, 1, (u8*)&regval);
     }
-
+    // if return here: allows reset but only once?
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     TxSeqno = 0xFF;
     TxCtlId = 1;
     RxFlags = 0;
     SDIO_EnableCardIRQ();
-
+    // if return here: allows reset but wifi fail
     Wifi_InitIoctls();
 
     /*for (int i = 0; i < 6; i++)
@@ -194,9 +205,43 @@ int Wifi_Init()
         printf("core %d: status=%08X\n", i, val);
     }*/
 
+    //Wifi_DumpRAM();
+
     SDIO_SetClocks(0, 0);
     printf("Wifi: ready to go\n");
     return 1;
+}
+
+void Wifi_DeInit()
+{
+    SDIO_SetClocks(1, 0);
+
+    /*u32 var = 1;
+    int res = Wifi_SendIoctl(3, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("down: res=%d resp=%08X\n", res, var);
+
+    SDIO_DisableCardIRQ();
+
+    Wifi_AI_SetCore(WIFI_CORE_ARMCM3);
+    Wifi_AI_DisableCore(0);*/
+
+    //SDIO_SetClocks(0, 0);
+    u8 regval;
+    /*printf("11\n");
+    u8 regval = 0;
+    SDIO_WriteCardRegs(1, 0x1000E, 1, &regval);
+printf("22\n");*/
+    // dhdsdio_sdclk TODO
+
+    regval = 0;
+    SDIO_ReadCardRegs(1, 0x10009, 1, (u8*)&regval);
+    printf("33\n");
+    if (!(regval & (1<<3)))
+    {
+        regval |= (1<<3);
+        SDIO_WriteCardRegs(1, 0x10009, 1, (u8*)&regval);
+    }
+    printf("44\n");
 }
 
 
@@ -379,6 +424,35 @@ int Wifi_UploadFirmware()
     return 1;
 }
 
+void Wifi_DumpRAM()
+{
+    printf("dumping wifi RAM\n");
+
+    int tmplen = 0x2000;
+    u8* verbuf = (u8*)memalign(16, tmplen);
+    u32 fw_length = RAMSize;
+    for (int i = 0; i < fw_length; )
+    {
+        int chunk = tmplen;
+        if ((i + chunk) > fw_length)
+            chunk = fw_length - i;
+
+        if (!SDIO_ReadF1Memory(i, verbuf, chunk))
+        {
+            printf("read failed\n");
+            return;
+        }
+
+        dump_data(verbuf, chunk);
+
+        i += chunk;
+    }
+
+    printf("OK\n");
+    free(verbuf);
+}
+
+
 u8 fazil[2048+28];
 int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u32 len_out)
 {
@@ -410,10 +484,10 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
     Wifi_ResetRxFlags(Flag_RxCtl);
 
     u16 len_rounded = (totallen + 0x3F) & ~0x3F;
-    printf("sending %d bytes\n", len_rounded);
+    //printf("sending %d bytes\n", len_rounded);
     //send_binary(buf, len_rounded);
     SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
-printf("sent\n");
+
     for (;;)
     {
         Wifi_WaitForRx(Flag_RxCtl);
@@ -430,7 +504,7 @@ printf("sent\n");
         int irq = DisableIRQ();
 
         u8 replyoffset = RxCtlBuffer[7];
-        printf("len=%04X cpl=%04X off=%02X\n", *(u16*)&RxCtlBuffer[0], *(u16*)&RxCtlBuffer[2], replyoffset);
+        //printf("len=%04X cpl=%04X off=%02X\n", *(u16*)&RxCtlBuffer[0], *(u16*)&RxCtlBuffer[2], replyoffset);
         u32 replyopc = *(u32*)&RxCtlBuffer[replyoffset];
         u32 replyflags = *(u32*)&RxCtlBuffer[replyoffset+8];
         s32 replystatus = *(s32*)&RxCtlBuffer[replyoffset+12];
@@ -467,6 +541,42 @@ printf("sent\n");
     return ret;
 }
 
+int Wifi_SendPacket(u8* data_in, u32 len_in)
+{
+    int ret = 1;
+
+    //u8 buf[256];
+    u8* buf = &fazil[0];
+
+    int totallen = len_in;
+    if (totallen > 1518)
+        totallen = 1518;
+    //totallen += 14;
+    totallen += 18;
+
+    //u16 totallen = len_in + 28;
+    *(u16*)&buf[0] = totallen;
+    *(u16*)&buf[2] = ~totallen;
+    buf[4] = TxSeqno++;
+    buf[5] = 0x02; // channel (data)
+    buf[6] = 0;
+    buf[7] = 14; // offset to data
+    *(u32*)&buf[8] = 0; // ??
+    //*(u16*)&buf[12] = 0;
+    //memcpy(&buf[14], data_in, len_in);
+    *(u16*)&buf[14] = 0x20; // ??? must be 0x10 or 0x20
+    *(u16*)&buf[16] = 0;
+    memcpy(&buf[18], data_in, len_in);
+
+    u16 len_rounded = (totallen + 0x3F) & ~0x3F;
+    //printf("sending %d bytes\n", len_rounded);
+    send_binary(buf, len_rounded);
+    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
+    //printf("packet sent\n");
+
+    return ret;
+}
+
 int Wifi_GetVar(char* var, u8* data, u32 len)
 {
     u8 buf[128];
@@ -486,7 +596,7 @@ int Wifi_SetVar(char* var, u8* data, u32 len)
 {
     u8 buf[128];
 
-    printf("Wifi_SetVar(%s)\n", var);
+    //printf("Wifi_SetVar(%s)\n", var);
     int varlen = strlen(var);
     memcpy(buf, var, varlen);
     buf[varlen] = 0;
@@ -514,7 +624,7 @@ void Wifi_InitIoctls()
     res = Wifi_SetVar("roam_off", (u8*)&var, 4);
     printf("res=%d\n", res);
 
-    var = 23456;
+    /*var = 23456;
     res = Wifi_SendIoctl(109, 0, (u8*)&var, 4, (u8*)&var, 4);
     printf("-- res=%d, gmode=%d\n", res, var);
 
@@ -524,15 +634,15 @@ void Wifi_InitIoctls()
 
     var = 23456;
     res = Wifi_GetVar("nmode_protection", (u8*)&var, 4);
-    printf("-- res=%d, nmodeproot=%d\n", res, var);
+    printf("-- res=%d, nmodeproot=%d\n", res, var);*/
 
-    var = 1;
+    /*var = 1;
     res = Wifi_SetVar("nmode", (u8*)&var, 4);
-    printf("-- set nmode, res=%d\n", res);
+    printf("-- set nmode, res=%d\n", res);*/
 
-    var = 23456;
+    /*var = 23456;
     res = Wifi_GetVar("nmode", (u8*)&var, 4);
-    printf("-- res=%d, nmode=%d\n", res, var);
+    printf("-- res=%d, nmode=%d\n", res, var);*/
 
     u32 bands[25];
     res = Wifi_SendIoctl(140, 0, (u8*)bands, 100, (u8*)bands, 100);
@@ -545,6 +655,7 @@ void Wifi_InitIoctls()
     // set band
     //var = 1;
     var = 1; // 0=auto 1=5GHz 2=2.4GHz
+    //var = 2; // 0=auto 1=5GHz 2=2.4GHz
     res = Wifi_SendIoctl(142, 2, (u8*)&var, 4, (u8*)&resp, 4);
     printf("res=%d\n", res);
 
@@ -556,10 +667,12 @@ void Wifi_InitIoctls()
     res = Wifi_SetVar("sgi_rx", (u8*)&var, 4);
     printf("res=%d\n", res);
 
+    // not supported
     var = 4;
     res = Wifi_SetVar("ampdu_txfail_event", (u8*)&var, 4);
     printf("res=%d\n", res);
 
+    // not supported
     var = 1;
     res = Wifi_SetVar("ac_remap_mode", (u8*)&var, 4);
     printf("res=%d\n", res);
@@ -579,8 +692,8 @@ void Wifi_InitIoctls()
 
     // get radio disable
     var = 1;
-    res = Wifi_SendIoctl(37, 0, (u8*)&var, 1, (u8*)&var, 1);
-    printf("res=%d radiodisable=%02X\n", res, (u8)var);
+    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("res=%d radiodisable=%02X (%08X)\n", res, (u8)var, var);
 
     // get SRL
     var = 0;
@@ -593,6 +706,7 @@ void Wifi_InitIoctls()
 
     var = 0;
     res = Wifi_GetVar("country", (u8*)&var, 4);
+    //res = res = Wifi_SendIoctl(83, 0, (u8*)&var, 4, (u8*)&var, 4);
     printf("res=%d country=%08X\n", res, var);
 
     // get channel
@@ -609,6 +723,37 @@ void Wifi_InitIoctls()
     var = 0xFF;
     res = Wifi_SendIoctl(63, 0, (u8*)&var, 1, (u8*)&resp, 1);
     printf("res=%d antdiv=%02X\n", res, (u8)resp);
+
+    // set country
+    char country_data[12] = {0x45, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x55, 0x00, 0x00};
+    //char country_data[12] = {0x46, 0x52, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x52, 0x00, 0x00};
+    res = Wifi_SetVar("country", (u8*)country_data, sizeof(country_data));
+    //res = Wifi_SendIoctl(84, 2, (u8*)country_data, 12, (u8*)country_data, 12);
+    printf("country. res=%d\n", res);
+
+    /* EU: immediate
+     * got event
+00000000: 5C 00 A3 FF 2E 01 00 0E 00 2B 00 00 00 00 20 00
+00000010: 00 00 40 F4 07 EA 66 19 42 F4 07 EA 66 19 88 6C
+00000020: 80 01 00 68 00 00 10 18 00 01 00 02 00 18 00 00
+00000030: 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00
+00000040: 00 00 FF 00 00 00 00 00 77 6C 30 00 00 00 00 00
+00000050: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00000060: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00000070: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+     FR: late
+     got event
+00000000: 5C 00 A3 FF 2C 01 00 0E 00 2B 00 00 00 00 20 00
+00000010: 00 00 40 F4 07 EA 66 19 42 F4 07 EA 66 19 88 6C
+00000020: 80 01 00 68 00 00 10 18 00 01 00 02 00 18 00 00
+00000030: 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00
+00000040: 00 00 FF 00 00 00 00 00 77 6C 30 00 00 00 00 00
+00000050: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00000060: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+00000070: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+
+*/
 
     // system up
     var = 1;
@@ -663,6 +808,15 @@ void Wifi_InitIoctls()
 
     res = Wifi_SendIoctl(140, 0, (u8*)bands, 100, (u8*)bands, 100);
     printf("bands res=%d -- %d %d %d\n", res, bands[0], bands[1], bands[2]);*/
+
+    /*var = 0xF;
+    res = Wifi_SetVar("msglevel", (u8*)&var, 4);
+    printf("set level res=%d\n", res);
+
+    char* dump = (char*)malloc(8192);
+    res = Wifi_GetVar("dump", (u8*)dump, 8192);
+    printf("res=%d\n", res);
+    puts(dump);*/
 }
 
 
@@ -780,7 +934,7 @@ void Wifi_RxData()
         PktQueueTail = pkt;
 
         RxFlags |= Flag_RxEvent;
-        _write(1, "event\n", 6);
+        //_write(1, "event\n", 6);
 
         /*if (len_rounded > 512) return;
 
@@ -803,9 +957,13 @@ void Wifi_RxData()
         // 8 bytes header then event data
         // see bcm_event_t and wl_event_msg_t for formats
     }
+    else if (chan == 2)
+    {
+        _write(1, "DATA!\n", 6);
+    }
     else
     {
-        //_write(1, "?????\n", 6);
+        //
     }
 }
 
@@ -848,355 +1006,24 @@ sPacket* Wifi_ReadRxPacket()
 }
 
 
-u8 derpderp[256];
-int Wifi_StartScan(int passive)
+
+
+int Wifi_StartScan(fnScanCb callback)
 {
     int res;
 
-    SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
-
-
-    /*u32 var = (u32)passive;
-    res = Wifi_SendIoctl(49, 2, (u8*)&var, 4, (u8*)&var, 4);
-    if (!res) return 0;*/
-
-    // u32 SSID length
-    // then SSID
-    /*u8 ssid_buf[36];
-    memset(ssid_buf, 0, 36);
-    res = Wifi_SendIoctl(50, 2, ssid_buf, 36, ssid_buf, 36);
-    if (!res) return 0;
-
-   // RxFlags = 0;
-    printf("scanning, I guess\n");
-    WUP_DelayMS(5000);
-    printf("checking res\n");
-    //printf("status = %02X\n", RxFlags);
-
-
-    u8 derp[128];
-    res = Wifi_SendIoctl(51, 0, derp, 128, derp, 128);
-    printf("res=%d\n", res);*/
-
-    /*u8 macaddr[6];
-    res = Wifi_GetVar("cur_etheraddr", macaddr, 6);
-    printf("res=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
-           res, macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]);*/
-
-    /*u32 chan = 11;
-    res = Wifi_SendIoctl(30, 2, (u8*)&chan, 4, (u8*)&chan, 4);
-    printf("chan res = %d\n", res);*/
-
-    //u8 scanparams[256];
-    u8* scanparams = &derpderp[0];
-
-    //memset(scanparams, 0, sizeof(scanparams));
-    memset(scanparams, 0, 256);
-    // bsstype = 2
-    *(u32*)&scanparams[0] = 1; // version
-    *(u16*)&scanparams[4] = 1; // action: start
-    *(u16*)&scanparams[6] = 0; // duration
-    //*(u16*)&scanparams[6] = 1000; // duration
-
-    memset(&scanparams[8+36], 0xFF, 6); // BSSID
-    scanparams[8+42] = 2; // BSS type
-    scanparams[8+43] = 1; // scan type (passive)
-    //scanparams[8+43] = 0; // scan type (active)
-    *(s32*)&scanparams[8+44] = -1; // nprobes
-    *(s32*)&scanparams[8+48] = -1; // active_time
-    *(s32*)&scanparams[8+52] = -1; // passive_time
-    *(s32*)&scanparams[8+56] = -1; // home_time
-    *(u32*)&scanparams[8+60] = 0; // channel_num
-
-    Wifi_ResetRxFlags(Flag_RxEvent);
-
-    //int paramsize = 256;//72;
-    int paramsize = 72;
-    //res = Wifi_SetVar("iscan", scanparams, paramsize-6);
-    res = Wifi_SetVar("iscan", scanparams, paramsize);
-    printf("scan res=%d\n", res);
-
-    Wifi_WaitForRx(Flag_RxEvent);
-
-    //send_binary(RxEventBuffer, 512);
-    printf("scan complete\n");
-
-    {
-        u8 scanbuf[256];
-        memset(scanbuf, 0, 256);
-        *(u32*)&scanbuf[4] = 2048; // max len
-
-        char* iovar = "iscanresults";
-        int iovlen = strlen(iovar);
-        //u8 iobuf[300];
-        u8* iobuf = (u8*)malloc(2048);
-        memcpy(iobuf, iovar, iovlen);
-        iobuf[iovlen] = 0;
-        memcpy(&iobuf[iovlen + 1], scanbuf, 256);
-        //send_binary(iobuf, 300);
-
-        printf("sending\n");
-        //Wifi_SendIoctl(262, 0, iobuf, iovlen + 1 + 16, scanbuf, 256);
-        //Wifi_SendIoctl(262, 0, iobuf, 2048, iobuf, 2048);
-        int fz = 256;//2048 - (64*3);
-        //Wifi_SendIoctl(262, 0, iobuf, 1518, iobuf, 2048);
-        Wifi_SendIoctl(262, 0, iobuf, 2048, iobuf, 2048);
-        u32 status = *(u32*)&iobuf[0];
-        u32 buflen = *(u32*)&iobuf[4];
-        printf("STATUS=%08X LEN=%08X\n", status, buflen);
-        send_binary(iobuf, 0x800);
-
-        if ((status == 0) && (buflen > 0xC))
-        {
-            u32 numap = *(u32*)&iobuf[0xC];
-            printf("found %d APs (%08X %08X %08X %08X)\n",
-                   numap, *(u32*)&iobuf[0x0], *(u32*)&iobuf[0x4], *(u32*)&iobuf[0x8], *(u32*)&iobuf[0xC]);
-
-            u8* apdata = &iobuf[0x10];
-            u8* apend = &iobuf[buflen];
-            for (u32 j = 0; j < numap && apdata < apend; j++)
-            {
-                u32 aplen = *(u32*)&apdata[0x04];
-
-                u8 bssid[6];
-                memcpy(bssid, &apdata[0x08], 6);
-
-                char ssid[33];
-                u8 ssidlen = apdata[0x12];
-                if (ssidlen > 32) ssidlen = 32;
-                if (ssidlen) memcpy(ssid, &apdata[0x13], ssidlen);
-                ssid[ssidlen] = 0;
-
-                u16 chanspec = *(u16*)&apdata[0x48];
-
-                printf("%d. (len=%04X) ch=%04X BSSID=%02X:%02X:%02X:%02X:%02X:%02X, SSID=%s\n",
-                       j, aplen, chanspec,
-                       bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-                       ssid);
-
-                apdata += aplen;
-            }
-        }
-
-        free(iobuf);
-    }
-
-#if 0
-    //for (;;)
-    {
-        for (int i = 0; i < 100; i++)
-        {
-            WUP_DelayMS(100);
-            //WUP_DelayMS(2000);
-            printf("waited\n");
-
-            /*u8 derp[256];
-            memset(derp, 0, 256);
-            res = Wifi_GetVar("iscanresults", derp, 256);
-            printf("results res=%d\n", res);*/
-
-            u8 scanbuf[256];
-            memset(scanbuf, 0, 256);
-            *(u32*)&scanbuf[4] = 2048; // max len
-
-            // buffer: strlen("iscanresults")+1 + 16
-            // total length: 2048
-            char* iovar = "iscanresults";
-            int iovlen = strlen(iovar);
-            //u8 iobuf[300];
-            u8* iobuf = (u8*)malloc(2048);
-            memcpy(iobuf, iovar, iovlen);
-            iobuf[iovlen] = 0;
-            memcpy(&iobuf[iovlen + 1], scanbuf, 256);
-            //send_binary(iobuf, 300);
-
-            printf("sending\n");
-            //Wifi_SendIoctl(262, 0, iobuf, iovlen + 1 + 16, scanbuf, 256);
-            //Wifi_SendIoctl(262, 0, iobuf, 2048, iobuf, 2048);
-            int fz = 256;//2048 - (64*3);
-            //Wifi_SendIoctl(262, 0, iobuf, 1518, iobuf, 2048);
-            Wifi_SendIoctl(262, 0, iobuf, 2048, iobuf, 2048);
-            u32 status = *(u32*)&iobuf[0];
-            printf("STATUS=%08X\n", status);
-
-            if (status == 0)
-            {
-                u32 numap = *(u32*)&iobuf[0xC];
-                printf("found %d APs (%08X %08X %08X %08X)\n",
-                       numap, *(u32*)&iobuf[0x0], *(u32*)&iobuf[0x4], *(u32*)&iobuf[0x8], *(u32*)&iobuf[0xC]);
-
-                u8* apdata = &iobuf[0x10];
-                for (u32 j = 0; j < numap; j++)
-                {
-                    u32 aplen = *(u32*)&apdata[0x04];
-
-                    u8 bssid[6];
-                    memcpy(bssid, &apdata[0x08], 6);
-
-                    char ssid[33];
-                    u8 ssidlen = apdata[0x12];
-                    if (ssidlen > 32) ssidlen = 32;
-                    if (ssidlen) memcpy(ssid, &apdata[0x13], ssidlen);
-                    ssid[ssidlen] = 0;
-
-                    u16 chanspec = *(u16*)&apdata[0x48];
-
-                    printf("%d. ch=%04X BSSID=%02X:%02X:%02X:%02X:%02X:%02X, SSID=%s\n",
-                           j, chanspec,
-                           bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-                           ssid);
-
-                    apdata += aplen;
-                }
-            }
-
-            free(iobuf);
-            if (status == 0) break;
-        }
-
-        //WUP_DelayMS(1000);
-    }
-#endif
-
-    /*
-     typedef struct wl_iscan_results {
-	uint32 status;
-	wl_scan_results_t results;
-} wl_iscan_results_t;
-
-     typedef struct wl_scan_results {
-	uint32 buflen;
-	uint32 version;
-	uint32 count;
-	wl_bss_info_t bss_info[1];
-} wl_scan_results_t;
-
-     typedef struct wl_bss_info {
-	uint32		version;
-	uint32		length;
-	struct ether_addr BSSID;
-	uint16		beacon_period;
-	uint16		capability;
-	uint8		SSID_len;
-	uint8		SSID[32];
-	struct {
-		uint	count;
-		uint8	rates[16];
-	} rateset;
-	chanspec_t	chanspec;
-	uint16		atim_window;
-	uint8		dtim_period;
-	int16		RSSI;
-	int8		phy_noise;
-
-	uint8		n_cap;
-	uint32		nbss_cap;
-	uint8		ctl_ch;
-	uint32		reserved32[1];
-	uint8		flags;
-	uint8		reserved[3];
-	uint8		basic_mcs[MCSSET_LEN];
-
-	uint16		ie_offset;
-	uint32		ie_length;
-
-
-} wl_bss_info_t;
-
-     memset(&list, 0, sizeof(list));
-	list.results.buflen = htod32(WLC_IW_ISCAN_MAXLEN);
-     */
-
-    /*memcpy(&params->bssid, &ether_bcast, ETHER_ADDR_LEN);
-	params->bss_type = DOT11_BSSTYPE_ANY;
-	params->scan_type = 0;
-	params->nprobes = -1;
-	params->active_time = -1;
-	params->passive_time = -1;
-	params->home_time = -1;
-	params->channel_num = 0;*/
-
-    /*
-     * typedef struct wl_scan_params {
-	wlc_ssid_t ssid;
-	struct ether_addr bssid;
-	int8 bss_type;
-	int8 scan_type;
-	int32 nprobes;
-	int32 active_time;
-	int32 passive_time;
-	int32 home_time;
-	int32 channel_num;
-	uint16 channel_list[1];
-} wl_scan_params_t;
-
-     #define WL_SCAN_PARAMS_COUNT_MASK 0x0000ffff
-#define WL_SCAN_PARAMS_NSSID_SHIFT 16
-
-#define WL_SCAN_ACTION_START      1
-#define WL_SCAN_ACTION_CONTINUE   2
-#define WL_SCAN_ACTION_ABORT      3
-
-#define ISCAN_REQ_VERSION 1
-
-
-typedef struct wl_iscan_params {
-	uint32 version;
-	uint16 action;
-	uint16 scan_duration;
-	wl_scan_params_t params;
-} wl_iscan_params_t;
-
-#define WL_ISCAN_PARAMS_FIXED_SIZE (OFFSETOF(wl_iscan_params_t, params) + sizeof(wlc_ssid_t))
-
-typedef struct wl_scan_results {
-	uint32 buflen;
-	uint32 version;
-	uint32 count;
-	wl_bss_info_t bss_info[1];
-} wl_scan_results_t;
-
-#define WL_SCAN_RESULTS_FIXED_SIZE 12
-
-
-#define WL_SCAN_RESULTS_SUCCESS	0
-#define WL_SCAN_RESULTS_PARTIAL	1
-#define WL_SCAN_RESULTS_PENDING	2
-#define WL_SCAN_RESULTS_ABORTED	3*/
-
-    SDIO_SetClocks(0, 0);
-    return 1;
-}
-
-
-int Wifi_StartScan2(int passive)
-{
-    int res;
+    if (Scanning) return 0;
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
-
-    /*u32 chan = 48;
-    res = Wifi_SendIoctl(30, 2, (u8*)&chan, 4, (u8*)&chan, 4);
-    printf("chan res = %d\n", res);*/
-
-
-
-    //u8 scanparams[256];
-    u8* scanparams = &derpderp[0];
-
-    //memset(scanparams, 0, sizeof(scanparams));
-    memset(scanparams, 0, 256);
-    // bsstype = 2
+    u8 scanparams[72];
+    memset(scanparams, 0, sizeof(scanparams));
     *(u32*)&scanparams[0] = 1; // version
     *(u16*)&scanparams[4] = 1; // action: start
     *(u16*)&scanparams[6] = 1; // duration
-    //*(u16*)&scanparams[6] = 1000; // duration
-
     memset(&scanparams[8+36], 0xFF, 6); // BSSID
     scanparams[8+42] = 2; // BSS type
     scanparams[8+43] = 1; // scan type (passive)
-    //scanparams[8+43] = 0; // scan type (active)
     *(s32*)&scanparams[8+44] = -1; // nprobes
     *(s32*)&scanparams[8+48] = -1; // active_time
     *(s32*)&scanparams[8+52] = -1; // passive_time
@@ -1205,123 +1032,303 @@ int Wifi_StartScan2(int passive)
 
     Wifi_ResetRxFlags(Flag_RxEvent);
 
-    //int paramsize = 256;//72;
-    int paramsize = 72;
-    res = Wifi_SetVar("escan", scanparams, paramsize);
-    printf("scan res=%d\n", res);
+    res = Wifi_SetVar("escan", scanparams, sizeof(scanparams));
+    if (!res) return 0;
 
-    for (;;)
-    {
-        Wifi_WaitForRx(Flag_RxEvent);
-
-        //send_binary(RxEventBuffer, 512);
-        sPacket* pkt;
-        while ((pkt = Wifi_ReadRxPacket()))
-        {
-            printf("got packet: %08X, len=%04X\n", (u32)pkt, pkt->Length);
-            //send_binary(pkt->Data, pkt->Length);
-
-            /*int irq = DisableIRQ();
-            send_binary(pkt->Data, pkt->Length);
-            RestoreIRQ(irq);*/
-
-            u8 dataoffset = pkt->Data[7];
-            if (dataoffset >= pkt->Length)
-            {printf("bad data offset %02X\n", dataoffset);
-                free(pkt);
-                continue;
-            }
-
-            u8* pktdata = &pkt->Data[dataoffset];
-
-            // TODO more sanity checks
-            u16 evtid = READ16BE(pktdata, 0x22);
-            if (evtid != 69) // ESCAN data event
-            {printf("bad event %04X\n", evtid);
-                free(pkt);
-                continue;
-            }
-
-            if (pkt->Length > 0x58)
-            {
-                //u32 aplen = READ32LE(pktdata, 0x4A);
-                //u16 numap = READ16LE(pktdata, 0x54);
-                u32 aplen = READ32LE(pktdata, 0x4C);
-                u16 numap = READ16LE(pktdata, 0x56);
-                if ((aplen > 0xC) && (numap > 0))
-                {
-                    // we got AP data
-                    printf("-- got %d APs (%d bytes) --\n", numap, aplen);
-
-                    //u8* apdata = &pktdata[0x56];
-                    u8* apdata = &pktdata[0x58];
-                    u8* apend = &apdata[aplen];
-                    for (u32 j = 0; j < numap && apdata < apend; j++)
-                    {
-                        u32 aplen = READ32LE(apdata, 0x04);
-
-                        u8 bssid[6];
-                        memcpy(bssid, &apdata[0x08], 6);
-
-                        char ssid[33];
-                        u8 ssidlen = apdata[0x12];
-                        if (ssidlen > 32) ssidlen = 32;
-                        if (ssidlen) memcpy(ssid, &apdata[0x13], ssidlen);
-                        ssid[ssidlen] = 0;
-
-                        u16 chanspec = READ16LE(apdata, 0x48);
-
-                        printf("%d. (len=%04X) ch=%04X BSSID=%02X:%02X:%02X:%02X:%02X:%02X, SSID=%s\n",
-                               j, aplen, chanspec,
-                               bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5],
-                               ssid);
-
-                        apdata += aplen;
-                    }
-                }
-                else
-                {
-                    // no data: scan end
-                    printf("-- scan end --\n");
-                    free(pkt);
-                    return 1;
-                }
-            }
-
-            free(pkt);
-        }
-
-        Wifi_ResetRxFlags(Flag_RxEvent);
-
-        // 58 = total length of stuff
-        // 5C = version??
-        // 64 = start of wl_scan_results_t
-        /*typedef struct wl_escan_result {
-	uint32 buflen;
-	uint32 version;
-	uint16 sync_id;
-	uint16 bss_count;
-	wl_bss_info_t bss_info[1];
-} wl_escan_result_t;*/
-    }
-    printf("scan complete\n");
-
-
-    SDIO_SetClocks(0, 0);
+    Scanning = 1;
+    ScanCB = callback;
     return 1;
 }
 
+static int CompareScanInfo(sScanInfo* a, sScanInfo* b)
+{
+    if (a->RSSI > b->RSSI) return -1;
+    else if (a->RSSI < b->RSSI) return 1;
+    else
+        return strncmp(a->SSID, b->SSID, 32);
+}
+
+void Wifi_AddScanResult(u8* apdata, u32 len)
+{
+    u8 bssid[6];
+    memcpy(bssid, &apdata[0x08], 6);
+
+    char ssid[33];
+    u8 ssidlen = apdata[0x12];
+    if (ssidlen > 32) return;
+
+    if (ssidlen == 0)
+    {
+        // hidden network
+        return;
+    }
+
+    u16 capabilities = READ16LE(apdata, 0x10);
+
+    if (ssidlen > 32) ssidlen = 32;
+    if (ssidlen) memcpy(ssid, &apdata[0x13], ssidlen);
+    ssid[ssidlen] = 0;
+
+    u16 chanspec = READ16LE(apdata, 0x48);
+    s16 rssi = (s16)READ16LE(apdata, 0x4E); // CHECKME
+
+    u32 ie_offset = READ32LE(apdata, 0x74);
+    u32 ie_len = READ32LE(apdata, 0x78);
+
+    int has_rsn = 0;
+    int has_wpa = 0;
+
+    // parse 802.11 information elements
+    u8* ie_data = &apdata[ie_offset];
+    u8* ie_end = &apdata[ie_offset + ie_len];
+    if (ie_end > &apdata[len]) ie_end = &apdata[len];
+    while (ie_data < ie_end)
+    {
+        u8 ietype = *ie_data++;
+        u8 ielen = *ie_data++;
+
+        switch (ietype)
+        {
+        case 0x30:
+            has_rsn = 1;
+            break;
+
+        case 0xDD:
+            if (ie_data[0] == 0x00 && ie_data[1] == 0x50 &&
+                ie_data[2] == 0xF2 && ie_data[3] == 0x01)
+                has_wpa = 1;
+            break;
+        }
+
+        ie_data += ielen;
+    }
+
+    // determine the type of security for this network
+    u8 sec = WIFI_SEC_OPEN;
+    if (capabilities & (1<<4))
+    {
+        if (has_rsn)
+            sec = WIFI_SEC_WPA2;
+        else if (has_wpa)
+            sec = WIFI_SEC_WPA;
+        else
+            sec = WIFI_SEC_WEP;
+    }
+
+    sScanInfo* info = NULL;
+
+    // see if we already have this network in the list
+    sScanInfo* chk = ScanList;
+    int isworst = 0;
+    while (chk)
+    {
+        int ssidmatch = !strncmp(chk->SSID, ssid, ssidlen);
+        int bssidmatch = !memcmp(chk->BSSID, bssid, 6);
+        int rssibetter = (chk->RSSI < rssi);
+        int good = 0;
+
+        if (ssidmatch)
+        {
+            if (bssidmatch) good = 1;
+            else
+            {
+                if (rssibetter) good = 1;
+                else isworst = 1;
+            }
+        }
+
+        if (good)
+        {
+            info = chk;
+            break;
+        }
+
+        chk = chk->Next;
+    }
+
+    if (!info)
+    {
+        if (isworst)
+        {
+            // this AP is worse than what we have in the list - ignore it
+            return;
+        }
+
+        int infolen = sizeof(sScanInfo);
+        info = (sScanInfo*)malloc(infolen);
+        memset(info, 0, infolen);
+    }
+    else
+    {
+        if (!info->Prev) ScanList = NULL;
+        if (info->Prev) info->Prev->Next = info->Next;
+        if (info->Next) info->Next->Prev = info->Prev;
+    }
+
+    // fill in AP info
+
+    info->SSIDLength = ssidlen;
+    memcpy(info->SSID, ssid, 32);
+    memcpy(info->BSSID, bssid, 6);
+
+    info->Capabilities = capabilities;
+    info->Channel = chanspec & 0xFF;
+    info->Security = sec;
+
+    info->RSSI = rssi;
+    if (rssi <= -91)
+        info->SignalQuality = 0;
+    else if (rssi <= -80)
+        info->SignalQuality = 1;
+    else if (rssi <= -70)
+        info->SignalQuality = 2;
+    else if (rssi <= -68)
+        info->SignalQuality = 3;
+    else if (rssi <= -58)
+        info->SignalQuality = 4;
+    else
+        info->SignalQuality = 5;
+
+    info->Timestamp = WUP_GetTicks();
+
+    // add it to the list, in order
+    // we want to have the APs with the highest RSSI first
+    // then sort alphanumerically
+    if (!ScanList)
+    {
+        ScanList = info;
+        info->Prev = NULL;
+        info->Next = NULL;
+    }
+    else
+    {
+        // try to insert our new entry before a lower ranked entry
+
+        sScanInfo* cur = ScanList;
+        sScanInfo* last = cur;
+        int inserted = 0;
+        while (cur)
+        {
+            int cmp = CompareScanInfo(info, cur);
+            if (cmp <= 0)
+            {
+                info->Prev = cur->Prev;
+                if (cur->Prev) cur->Prev->Next = info;
+                else           ScanList = info;
+                cur->Prev = info;
+                info->Next = cur;
+
+                inserted = 1;
+                break;
+            }
+
+            last = cur;
+            cur = cur->Next;
+        }
+
+        if (!inserted)
+        {
+            // if there was no lower ranked entry, insert it at the end of the list
+            last->Next = info;
+            info->Prev = last;
+            info->Next = NULL;
+        }
+    }
+}
+
+void Wifi_CleanupScanList()
+{
+    u32 time = WUP_GetTicks();
+    const u32 age_max = 5000;
+
+    sScanInfo* cur = ScanList;
+    while (cur)
+    {
+        sScanInfo* next = cur->Next;
+
+        if ((time - cur->Timestamp) >= age_max)
+        {
+            if (!cur->Prev) ScanList = NULL;
+            if (cur->Prev) cur->Prev->Next = cur->Next;
+            if (cur->Next) cur->Next->Prev = cur->Prev;
+
+            free(cur);
+        }
+
+        cur = next;
+    }
+}
+
+
+
+
+
 // TEST
-int Wifi_JoinNetwork()
+int Wifi_JoinNetwork(u32 wsec, u32 wpaauth)
 {
     u32 var;
     int res;
     u8 tmp[100];
     //char* ssid = "ElectricAngel";
-    char* ssid = "Freebox-375297"; // TEST
-    char* pass = "hdfgfdgjdtyygdf";
+    //char* ssid = "Freebox-375297"; // TEST
+    char* ssid = "tarteauxpommes"; // TEST
+    //char* ssid = "tarteauxfraises"; // TEST
+    //char* ssid = "WiiU182a7bd2f30f"; // TEST
+    //char* pass = "hdfgfdgjdtyygdf";
+    char* pass = "putain j'ai mal au cul";
+    //char* pass = "66826b1d30f5c41dcc7552e9a1b6b84047828d4958a794f2e22a36b786688d0e";
+    /*char pass[32] = {0x66, 0x82, 0x6b, 0x1d, 0x30, 0xf5, 0xc4, 0x1d, 0xcc, 0x75, 0x52,
+                     0xe9, 0xa1, 0xb6, 0xb8, 0x40, 0x47, 0x82, 0x8d, 0x49, 0x58, 0xa7,
+                     0x94, 0xf2, 0xe2, 0x2a, 0x36, 0xb7, 0x86, 0x68, 0x8d, 0x0e};*/
+    // WPA key 66826b1d30f5c41dcc7552e9a1b6b84047828d4958a794f2e22a36b786688d0e
+    // WPA2
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
+
+    var = 1;
+    res = Wifi_SendIoctl(3, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("res=%d resp=%08X\n", res, var);
+
+    /*char zorp[12];
+    Wifi_GetVar("country", zorp, 20);
+    send_binary(zorp, 12);*/
+
+    var = 0;
+    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("radio: res=%d resp=%08X\n", res, var);
+
+    // WLC_SET_CHANNEL
+    /*var = 48;
+    res = Wifi_SendIoctl(30, 2, (u8*)&var, 4, (u8*)&var, 4);
+    printf("set channel: %d\n", res);
+    if (!res) return 0;*/
+
+    /*var = 3;
+    res = Wifi_SetVar("bcn_timeout", (u8*)&var, 4);
+    printf("set bcn: res=%d resp=%08X\n", res, var);
+
+    var = 0;
+    res = Wifi_GetVar("bcn_timeout", (u8*)&var, 4);
+    printf("bcn: res=%d resp=%08X\n", res, var);*/
+
+    // WLC_SET_INFRA
+    var = 1;
+    res = Wifi_SendIoctl(20, 2, (u8*)&var, 4, (u8*)&var, 4);
+    printf("set infra: %d\n", res);
+    if (!res) return 0;
+
+    var = 1;
+    res = Wifi_SendIoctl(2, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("res=%d resp=%08X\n", res, var);
+
+    var = 0;
+    res = Wifi_GetVar("bcn_timeout", (u8*)&var, 4);
+    printf("bcn: res=%d resp=%08X\n", res, var);
+    var = 0;
+    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
+    printf("radio: res=%d resp=%08X\n", res, var);
+
+    //return 1;
 
     // system up
     /*var = 1;
@@ -1354,13 +1361,24 @@ int Wifi_JoinNetwork()
     printf("1. res=%d\n", res);
     if (!res) return 0;*/
 
-    // WLC_SET_INFRA
+    var = 0xC8;
+    res = Wifi_GetVar("pm2_sleep_ret", (u8*)&var, 4);
+    printf("2. res=%d var=%08X\n", res, var);
+
     var = 1;
-    res = Wifi_SendIoctl(20, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set infra: %d\n", res);
-    if (!res) return 0;
+    res = Wifi_GetVar("bcn_li_bcn", (u8*)&var, 4);
+    printf("2. res=%d var=%08X\n", res, var);
+
+    var = 1;
+    res = Wifi_GetVar("bcn_li_dtim", (u8*)&var, 4);
+    printf("2. res=%d var=%08X\n", res, var);
+
+    var = 10;
+    res = Wifi_GetVar("assoc_listen", (u8*)&var, 4);
+    printf("2. res=%d var=%08X\n", res, var);
 
     // WLC_SET_AUTH
+    // 1 == only accept encrypted frames
     var = 0;
     res = Wifi_SendIoctl(22, 2, (u8*)&var, 4, (u8*)&var, 4);
     printf("set auth: %d\n", res);
@@ -1383,77 +1401,169 @@ int Wifi_JoinNetwork()
     printf("res: %d\n", res);
     if (!res) return 0;*/
 
-    // WLC_SET_WSEC
-    var = 2; // TKIP
-    res = Wifi_SendIoctl(134, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set wsec: %d\n", res);
-    if (!res) return 0;
-
-    // WLC_SET_WPA_AUTH
-    var = 4; // WPA-PSK
-    res = Wifi_SendIoctl(165, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set wpa auth: %d\n", res);
-    if (!res) return 0;
-
-    // WLC_SET_WSEC_PMK
-    // supported by: wlfirmware.bin wlfirmware2.bin
-    // NOT SUPPORTED by: wlfirmware1.bin wlfirmware3.bin wlfirmware4.bin
-    int passlen = strlen(pass);
-    if (passlen > 96) passlen = 96;
-    memset(tmp, 0, sizeof(tmp));
-    *(u16*)&tmp[0] = passlen;
-    *(u16*)&tmp[2] = 1; // flags
-    strncpy((char*)&tmp[4], pass, 96);
-    res = Wifi_SendIoctl(268, 2, tmp, 100, tmp, 100);
-    printf("set key: %d\n", res);
-    if (!res) return 0;
-
-    for (int i = 0; i < 20; i++)
+    if (1)
     {
-        Wifi_ResetRxFlags(Flag_RxEvent);
+        // WPA-PSK TKIP:  2    4
+        // WPA-PSK CCMP:  4/6  4
+        //
 
-        // WLC_SET_SSID
-        int ssidlen = strlen(ssid);
-        if (ssidlen > 96) ssidlen = 96;
-        memset(tmp, 0, sizeof(tmp));
-        *(u32 * ) & tmp[0] = ssidlen;
-        strncpy((char *) &tmp[4], ssid, 96);
-        res = Wifi_SendIoctl(26, 2, tmp, 4+ssidlen, tmp, 4+ssidlen);
-        printf("set SSID: %d\n", res);
+        // WLC_SET_WSEC
+        //var = 2; // TKIP
+        //var = 4; // AES
+        //var = 6;
+        var = wsec;
+        res = Wifi_SendIoctl(134, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
+        printf("set wsec: %d\n", res);
         if (!res) return 0;
 
-        // TODO wait for shit
-        for (;;)
-        {
-            Wifi_WaitForRx(Flag_RxEvent);
+        // WLC_SET_WPA_AUTH
+        //var = 4; // WPA-PSK
+        //var = 0x80; //
+        var = wpaauth;
+        res = Wifi_SendIoctl(165, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
+        printf("set wpa auth: %d\n", res);
+        if (!res) return 0;
 
-            //printf("event: %08X %08X %08X\n", shaz[0], shaz[1], shaz[2]);
-            printf("got event\n");
-            sPacket* pkt;
-            while ((pkt = Wifi_ReadRxPacket()))
-            {
-                send_binary(pkt->Data, pkt->Length);
-                free(pkt);
-            }
+        // sup_wpa
+        var = 1;
+        res = Wifi_SetVar("sup_wpa", (u8 * ) & var, 4);
+        printf("res: %d\n", res);
+        if (!res) return 0;
 
-            //u16 len = *(u16*)&RxEventBuffer[0];
-            //send_binary(RxEventBuffer, len);
-            Wifi_ResetRxFlags(Flag_RxEvent);
-        }
+        WUP_DelayMS(2);
 
-        WUP_DelayMS(500);
-
-        // B2:0D:43:EB:E6:78
-        u8 bssid[6];
-        res = Wifi_SendIoctl(23, 0, bssid, 6, bssid, 6);
-        printf("BSSID res=%d\n", res);
-        printf("%02X:%02X:%02X:%02X:%02X:%02X\n",
-               bssid[0], bssid[1], bssid[2], bssid[3], bssid[4], bssid[5]);
-
-        if (res) break;
+        // WLC_SET_WSEC_PMK
+        // supported by: wlfirmware.bin wlfirmware2.bin
+        // NOT SUPPORTED by: wlfirmware1.bin wlfirmware3.bin wlfirmware4.bin
+        int passlen = strlen(pass);
+        if (passlen > 96) passlen = 96;
+        memset(tmp, 0, sizeof(tmp));
+        *(u16 * ) & tmp[0] = passlen;
+        *(u16 * ) & tmp[2] = 1; // flags
+        strncpy((char *) &tmp[4], pass, 96);
+        res = Wifi_SendIoctl(268, 2, tmp, 100, tmp, 100);
+        printf("set key: %d\n", res);
+        if (!res) return 0;
     }
+    else
+    {
+        // open wifi
+
+        // WLC_SET_WSEC
+        var = 0;
+        res = Wifi_SendIoctl(134, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
+        printf("set wsec: %d\n", res);
+        if (!res) return 0;
+
+        /*var = 0;
+        res = Wifi_SendIoctl(165, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
+        printf("set wpa auth: %d\n", res);
+        if (!res) return 0;
+
+        var = 0;
+        res = Wifi_SetVar("sup_wpa", (u8 * ) & var, 4);
+        printf("res: %d\n", res);
+        if (!res) return 0;*/
+    }
+
+    Wifi_ResetRxFlags(Flag_RxEvent);
+
+    //u8 event_msgs[16] = {0xEB, 0x1F, 0xBB, 0x04, 0x50, 0x40, 0x40, 0x80, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+    //u8 event_msgs[16] = {0xFF, 0x1F, 0xBB, 0x04, 0x50, 0x40, 0x40, 0x80, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
+    u8 event_msgs[16] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    res = Wifi_SetVar("event_msgs", event_msgs, 16);
+    printf("res=%d\n", res);
+
+    // WLC_SET_SSID
+    // 4+32   36
+    // 6+2    8
+    // 4+2    6
+    //        50
+    int ssidlen = strlen(ssid);
+    if (ssidlen > 32) ssidlen = 32;
+    memset(tmp, 0, sizeof(tmp));
+    *(u32 * ) & tmp[0] = ssidlen;
+    strncpy((char *) &tmp[4], ssid, 32);
+    memset(&tmp[4+32], 0xFF, 6);
+    res = Wifi_SendIoctl(26, 2, tmp, 50, tmp, 50);
+    printf("set SSID: %d\n", res);
+    if (!res) return 0;
 
     return 1;
 }
 
+
+
+void Wifi_Update()
+{
+    Wifi_CleanupScanList();
+
+    if (RxFlags & Flag_RxEvent)
+    {
+        printf("got event(s)\n");
+        sPacket* pkt;
+        while ((pkt = Wifi_ReadRxPacket()))
+        {
+            //send_binary(pkt->Data, pkt->Length);
+
+            u8 dataoffset = pkt->Data[7];
+            if (dataoffset >= pkt->Length)
+            {
+                printf("* bad data offset %02X\n", dataoffset);
+                free(pkt);
+                continue;
+            }
+
+            u8* pktdata = &pkt->Data[dataoffset];
+            u8* pktend = &pkt->Data[pkt->Length];
+
+            u16 flags = READ16BE(pktdata, 0x1E);
+            u32 type = READ32BE(pktdata, 0x20);
+            u32 status = READ32BE(pktdata, 0x24);
+            u32 reason = READ32BE(pktdata, 0x28);
+
+            switch (type)
+            {
+            case WLC_E_ESCAN_RESULT:
+                {
+                    if (!Scanning) break;
+                    if (pkt->Length < 0x58) break;
+
+                    u32 aplen = READ32LE(pktdata, 0x4C);
+                    u16 numap = READ16LE(pktdata, 0x56);
+                    if ((aplen > 0xC) && (numap > 0))
+                    {
+                        // we got AP data
+                        u8* apdata = &pktdata[0x58];
+                        u8* apend = &apdata[aplen];
+                        for (u32 j = 0; j < numap && apdata < apend; j++)
+                        {
+                            if ((apdata + aplen) > pktend) break;
+
+                            u32 aplen = READ32LE(apdata, 0x04);
+                            Wifi_AddScanResult(apdata, aplen);
+                            apdata += aplen;
+                        }
+                    }
+                    else
+                    {
+                        // empty frame: scan end
+
+                        Scanning = 0;
+                        if (ScanCB) ScanCB(ScanList);
+                        ScanCB = NULL;
+                    }
+                }
+                break;
+            }
+
+            if (type != 0x2C)
+                printf("* type=%d flags=%04X status=%08X reason=%08X\n", type, flags, status, reason);
+
+            free(pkt);
+        }
+
+        Wifi_ResetRxFlags(Flag_RxEvent);
+    }
+}
 

@@ -72,6 +72,32 @@ void LCD_SetBrightness(int brightness)
     UIC_SetBacklight(brightness >= 0);
 }
 
+void LCD_test(int derp)
+{
+    I2C_Start(I2C_BUS_LCD);
+
+    //LCD_TryGetID();
+    // I2C LCD init
+    u8 buf[16];
+
+    buf[0] = 0xB0; buf[1] = 0x02;
+    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0)) return;
+
+    buf[0] = 0xBF;
+    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 1, 1)) return;
+    *(vu32*)0xF0000058 |= (1<<derp);
+    *(vu32*)0xF0000058 &= ~(1<<derp);
+    if (!I2C_Read(I2C_BUS_LCD, I2C_DEV_LCD, buf, 5)) return;
+
+    u32 lcdid = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+
+    buf[0] = 0xB0; buf[1] = 0x03;
+    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0)) return;
+    printf("LCD = %08X\n", lcdid);
+
+    I2C_Finish(I2C_BUS_LCD);
+}
+
 
 int LCD_TryGetID()
 {

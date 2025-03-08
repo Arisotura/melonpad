@@ -197,6 +197,15 @@ int AudioAmp_Init()
     return 1;
 }
 
+void AudioAmp_DeInit()
+{
+    AudioAmp_SetPage(0x00);
+    AudioAmp_WriteReg(0x40, 0x0E);
+    AudioAmp_SetPage(0x01);
+    AudioAmp_WriteReg(0x1F, 0x04);
+    AudioAmp_WriteReg(0x20, 0x06);
+}
+
 
 u8 AudioAmp_ReadReg(u8 reg)
 {

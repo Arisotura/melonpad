@@ -119,6 +119,7 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 CFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.c))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.cpp))
 SFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.s))
+_SFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.S))
 BINFILES	:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.bin))
 
 #---------------------------------------------------------------------------------
@@ -136,7 +137,7 @@ endif
 #---------------------------------------------------------------------------------
 
 export OFILES	:=	$(BINFILES:.bin=.o) \
-					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(_SFILES:.S=.o)
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -150,7 +151,7 @@ all: $(BUILD)
 #---------------------------------------------------------------------------------
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	for dir in $(SOURCES); do mkdir -p $(BUILD)/$$dir; done
+	$(SILENTCMD)for dir in $(SOURCES); do mkdir -p $(BUILD)/$$dir; done
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 fwpack:
@@ -190,9 +191,9 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.fw : %.bin
 	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
-	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware1.bin WNVR=../wlnvram.bin $@
-
+	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
+	$(SILENTCMD)$(FWPACK) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
+	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware3.bin WNVR=../wlnvram.bin $@
 
 -include $(DEPENDS)
 

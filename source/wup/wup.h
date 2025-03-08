@@ -26,6 +26,9 @@
 #include "console.h"
 #include "input.h"
 
+// route logging to FPGA
+#define FPGA_LOG
+
 void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);
@@ -33,10 +36,14 @@ void WaitForIRQ();
 int IsInIRQ();
 
 void DC_FlushRange(void* addr, int length);
+void DC_FlushAll();
 void DC_InvalidateRange(void* addr, int length);
 void DC_InvalidateAll();
 void IC_InvalidateRange(void* addr, int length);
 void IC_InvalidateAll();
+
+void DisableMMU();
+void CallLoader(u32 arg0);
 
 void WUP_Init();
 
@@ -48,5 +55,6 @@ void WUP_DisableIRQ(u8 irq);
 
 void WUP_DelayUS(int us);
 void WUP_DelayMS(int ms);
+u32 WUP_GetTicks();
 
 #endif // _WUP_H_

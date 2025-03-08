@@ -28,6 +28,13 @@ int Flash_Init()
         return 0;
 
     PartHeader = (u32*)malloc(tbllen);
+    if (!PartHeader)
+    {
+        printf("Flash: failed to malloc() partheader\n");
+        for (;;);
+        return 0;
+    }
+
     Flash_Read(PartBase, (u8*)PartHeader, tbllen);
     PartNumEntries = tbllen >> 4;
 
