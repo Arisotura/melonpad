@@ -43,10 +43,10 @@ void SPI_IRQHandler(int irq, void* userdata)
 }
 
 
-void SPI_Start(u32 device, u32 speed)
+void SPI_Start(u32 device, u32 clock)
 {
     REG_SPI_DEVICE_SEL = device & 0x3;
-    REG_SPI_SPEED = speed & 0x87FF;
+    REG_SPI_CLOCK = clock & 0x87FF;
 
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_CS_MASK) | SPI_CSMODE_MANUAL | SPI_CS_SELECT;
 }

@@ -84,24 +84,25 @@ void WUP_Init()
     *(vu32*)0xF0005110 = 0xF200;
     fill32(0xF0005114, 0xF000511C, 0x8000);
 
-    fill32(0xF0000040, 0xF0000048, 1);
-    *(vu32*)0xF0000054 = 0x411;         // SDIO clock - 48 MHz
-    *(vu32*)0xF000003C = 1;             // audio amplifier clock - 16 MHz
-    *(vu32*)0xF000004C = 0x4D7;         // I2C clock - 4 MHz (166 KHz)
-    *(vu32*)0xF0000034 = 0;             // pixel clock - 32 MHz
-    *(vu32*)0xF0000038 = 0x447;         // UART clock? - 12 MHz
-    *(vu32*)0xF0000050 = 1;
+    REG_CLK_UNK40    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
+    REG_CLK_UNK44    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
+    REG_CLK_UNK48    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
+    REG_CLK_SDIO     = CLK_SOURCE(CLKSRC_PLL_PRIM) | CLK_DIVIDER(18);   // 48 MHz
+    REG_CLK_AUDIOAMP = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
+    REG_CLK_I2C      = CLK_SOURCE(CLKSRC_PLL_PRIM) | CLK_DIVIDER(216);  // 4 MHz
+    REG_CLK_PIXEL    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(1);
+    REG_CLK_CAMERA   = CLK_SOURCE(CLKSRC_PLL_PRIM) | CLK_DIVIDER(72);   // 12 MHz
+    REG_CLK_UNK50    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
 
     // set the timers' base clock to tick every 108 cycles (ie. every microsecond)
     REG_TIMER_PRESCALER = 107;
     REG_COUNTUP_PRESCALER = 107;
 
-    u32 zarf = *(vu32*)0xF0000030;
     // reset hardware
-    *(vu32*)0xF0000058 |= 0x003FFFF8;
-    *(vu32*)0xF0000064 = 6;
-    *(vu32*)0xF0000058 &= ~0x003FFFF8;
-    *(vu32*)0xF0000030 |= 0x300;
+    REG_HARDWARE_RESET |= 0x003FFFF8;
+    REG_UNK64 = 6;
+    REG_HARDWARE_RESET &= ~0x003FFFF8;
+    REG_UNK30 |= 0x300;
 
     // more GPIO setup
     *(vu32*)0xF00050EC = 0x8001;

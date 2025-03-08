@@ -56,10 +56,8 @@ int CheckCRC16(u8* data, u32 len)
 void UIC_Init()
 {
     // the bootloader writes the result of command 7F at 0x3FFFFC
-    // TODO: check command 7F also?
 
     u8 uictype = *(u8*)0x3FFFFC;
-    printf("uictype=%02X\n", uictype);
     if (uictype == 0x2F || uictype == 0x3F)
         UICGood = 1;
     else
@@ -76,7 +74,6 @@ void UIC_Init()
         // The wakeup event will reset the CPU.
 
         UICState = UIC_GetState();
-        printf("uic=%d\n", UICState);
         if (UICState == 11)
         {
             UIC_SetState(3);
@@ -86,28 +83,13 @@ void UIC_Init()
     }
 }
 
-void uictest()
-{
-    if (UICState == 11)
-    {
-        LCD_SetBrightness(-1);
-        *(vu32*)0xF0005100 = 0xC200;
-        Wifi_DeInit();
-        WUP_DelayUS(60);
-
-        UIC_SetState(3);
-        DisableIRQ();
-        for (;;);
-    }
-}
-
 
 u8 UIC_GetFirmwareType()
 {
     u8 buf = 0x7F;
     u8 ret = 0;
 
-    SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
     SPI_Write(&buf, 1);
     WUP_DelayMS(1);
     SPI_Read(&ret, 1);
@@ -119,7 +101,7 @@ u8 UIC_GetFirmwareType()
 
 void UIC_SendCommand(u8 cmd, u8* in_data, int in_len, u8* out_data, int out_len)
 {
-    SPI_Start(SPI_DEVICE_UIC, 0x8018);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_8MHZ);
 
     SPI_Write(&cmd, 1);
     if (in_data)
@@ -181,13 +163,13 @@ int UIC_UploadFirmware(u8* data, int len)
     buf[0] = 0x00;
     buf[1] = 0xFF;
 
-    SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
     SPI_Write(buf, 2);
     if (UIC_WaitForReply(0x00) != 0x79) return -1;
     SPI_Finish();
     WUP_DelayUS(60);
 
-    SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
     REG_SPI_CNT |= 0x40;
     WUP_DelayUS(60);
     REG_SPI_CNT &= ~0x40;
@@ -205,7 +187,7 @@ int UIC_UploadFirmware(u8* data, int len)
         buf[0] = 0x31;
         buf[1] = 0xCE;
 
-        SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+        SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
         SPI_Write(buf, 2);
         if (UIC_WaitForReply(0x00) != 0x79) return -2;
         SPI_Finish();
@@ -217,7 +199,7 @@ int UIC_UploadFirmware(u8* data, int len)
         buf[3] = addr & 0xFF;
         buf[4] = buf[0] ^ buf[1] ^ buf[2] ^ buf[3];
 
-        SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+        SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
         SPI_Write(buf, 5);
         if (UIC_WaitForReply(0x00) != 0x79) return -3;
         SPI_Finish();
@@ -225,7 +207,7 @@ int UIC_UploadFirmware(u8* data, int len)
 
         buf[0] = chunk;
 
-        SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+        SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
         SPI_Write(buf, 1);
         if (UIC_WaitForReply(0x00) != 0x79) return -4;
         SPI_Finish();
@@ -238,7 +220,7 @@ int UIC_UploadFirmware(u8* data, int len)
             buf[chunk] ^= data[i + j];
         }
 
-        SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+        SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
         SPI_Write(buf, chunk+1);
         if (UIC_WaitForReply(0x00) != 0x79) return -5;
         SPI_Finish();
@@ -251,7 +233,7 @@ int UIC_UploadFirmware(u8* data, int len)
     buf[0] = 0x21;
     buf[1] = 0xDE;
 
-    SPI_Start(SPI_DEVICE_UIC, SPI_SPEED_UIC);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_248KHZ);
     SPI_Write(buf, 2);
     if (UIC_WaitForReply(0x79) != 0x51) return -6;
     SPI_Finish();
@@ -349,7 +331,7 @@ int UIC_WriteEEPROM(u32 offset, u8* data, int length)
     buf[1] = offset & 0xFF;
     buf[2] = length;
 
-    SPI_Start(SPI_DEVICE_UIC, 0x8018);
+    SPI_Start(SPI_DEVICE_UIC, SPI_CLK_8MHZ);
 
     u8 cmd = 0x02;
     SPI_Write(&cmd, 1);

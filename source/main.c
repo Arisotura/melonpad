@@ -31,7 +31,7 @@ void send_binary(u8* data, int len)
     buf[1] = header >> 8;
     buf[2] = header & 0xFF;
 
-    SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
+    SPI_Start(SPI_DEVICE_FLASH, 0x8400);
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
@@ -51,7 +51,7 @@ void send_string(char* str)
     buf[1] = header >> 8;
     buf[2] = header & 0xFF;
 
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
+    SPI_Start(SPI_DEVICE_FLASH, 0x8400);
     SPI_Write(buf, 3);
     SPI_Write((u8*)str, len);
     SPI_Finish();
@@ -69,7 +69,7 @@ void dump_data(u8* data, int len)
     buf[1] = header >> 8;
     buf[2] = header & 0xFF;
 
-    SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
+    SPI_Start(SPI_DEVICE_FLASH, 0x8400);
     SPI_Write(buf, 3);
     SPI_Write(data, len);
     SPI_Finish();
@@ -312,241 +312,6 @@ void vbl_end(int irq, void* userdata)
     vblendflag = 1;
 }
 
-
-void clk_testbench()
-{
-    *(vu32*)0xF0004424 = 0;
-
-    // bit9=CS  bit8=device  bit1=direction
-    *(vu32*)0xF0004404 = (*(vu32*)0xF0004404 & ~0x702) | 0x100;
-
-    // 15=0 1=0: clk out=in
-    // 15=0 1=1: clk out=in
-    // 15=1 1=0: clk out=~in
-    // 15=1 1=1: clk out=in
-    //*(vu32*)0xF0004414 &= ~(1<<4);
-    //*(vu32*)0xF0004414 &= ~(1<<1);
-
-    // 857? -> 43MHz
-    *(vu32*)0xF0004400 = 0x8000 | 4 | (19<<3);
-    //*(vu32*)0xF0004400 = 0x8000 | 3;
-    //*(vu32*)0xF0004400 = 0x8000;
-
-    for (;;)
-        *(vu32*)0xF0004410 = 0x00;
-}
-
-void shit_testbench()
-{
-    for (int i = 0; i < 20; i++)
-    {
-        printf("round %d:\n", i);
-
-        u32 zerp[5];
-        Flash_Read(0x66C38C, (u8*)&zerp[0], 4);
-        Flash_Read(0x66C38D, (u8*)&zerp[1], 4);
-        Flash_Read(0x66C38E, (u8*)&zerp[2], 4);
-        Flash_Read(0x66C38F, (u8*)&zerp[3], 4);
-        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);
-
-        /*Flash_Read(0x66C384, (u8*)&zerp[0], 4);
-        Flash_Read(0x66C385, (u8*)&zerp[1], 4);
-        Flash_Read(0x66C386, (u8*)&zerp[2], 4);
-        Flash_Read(0x66C387, (u8*)&zerp[3], 4);
-        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);
-
-        Flash_Read(0x66C37C, (u8*)&zerp[0], 4);
-        Flash_Read(0x66C37D, (u8*)&zerp[1], 4);
-        Flash_Read(0x66C37E, (u8*)&zerp[2], 4);
-        Flash_Read(0x66C37F, (u8*)&zerp[3], 4);
-        printf("zerp: %08X %08X %08X %08X\n", zerp[0], zerp[1], zerp[2], zerp[3]);*/
-
-        Flash_Read(0x66C37F, (u8*)&zerp[0], 20);
-        printf("%08X\n", zerp[4]);
-
-        /*u32 imglen;
-        Flash_Read(0x66C38F, (u8 * ) & imglen, 4);
-        printf("IMG_ len: %08X\n", imglen);*/
-
-        /*u8 *img = (u8 *) malloc(imglen * 0x18);
-        Flash_Read(0x66C38F + 4, img, imglen * 0x18);
-        printf("offset for entry 31: %08X\n", *(u32 * ) & img[0x18 * 31 + 4]);
-
-        free(img);*/
-
-        WUP_DelayMS(500);
-    }
-}
-
-void flash_testbench()
-{
-    u8* derp = (u8*)malloc(200);
-    /*char str[200];
-    sprintf(str, "sprintf test: %08X\n", *(vu32*)0xF0000000);
-    send_string(str);*/
-
-    printf("printf test: %08X\n", *(vu32*)0xF0000000);
-
-    u8* test = (u8*)malloc(0x1008);
-    Flash_Read(0, test, 0x1008);
-    printf("TEST BEFORE: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    u8 cmd[5] = {0x20, 0x00, 0x00, 0x02, 0x34};
-    SPI_Write(cmd, 5);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("subsec erased\n");
-
-    Flash_Read(0, test, 0x1008);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    for (int i = 0; i < 0x100; i++)
-        test[i] = 0x40+i;
-    for (int i = 0x100; i < 0x200; i++)
-        test[i] = 0x77;
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    u8 cmd2[5] = {0x02, 0x00, 0x00, 0x00, 0x01};
-    SPI_Write(cmd2, 5);
-    SPI_Write(test, 0x101);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("page programmed\n");
-
-    Flash_Read(0, test, 0x1008);
-    //printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xF8], *(u32*)&test[0xFC], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0x48], *(u32*)&test[0x4C], *(u32*)&test[0x78], *(u32*)&test[0x7C], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-
-    printf("now testing elsewhere\n");
-    Flash_Read(0x100000, test, 0x1008);
-    printf("TEST BEFORE: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    u8 cmd1[5] = {0x20, 0x00, 0x10, 0x05, 0x67};
-    SPI_Write(cmd1, 5);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("subsec erased\n");
-
-    Flash_Read(0x100000, test, 0x1008);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    for (int i = 0; i < 0x100; i++)
-        test[i] = 0x40+i;
-    for (int i = 0x100; i < 0x200; i++)
-        test[i] = 0x77;
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    //u8 cmd4[5] = {0x02, 0x00, 0x00, 0x00, 0x00};
-    u8 cmd4[5] = {0x02, 0x00, 0x10, 0x00, 0x00};
-    SPI_Write(cmd4, 5);
-    SPI_Write(test, 0x100);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("page programmed\n");
-
-    //Flash_Read(0, test, 0x1008);
-    Flash_Read(0x100000, test, 0x1008);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xF8], *(u32*)&test[0xFC], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0x48], *(u32*)&test[0x4C], *(u32*)&test[0x78], *(u32*)&test[0x7C], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-
-
-    for (int i = 0; i < 20; i++)
-    {
-        *(u32*)&test[0] = (i & 0xF) * 0x11111111;
-
-        Flash_WaitForStatus(0x03, 0x00);
-        Flash_WriteEnable();
-
-        SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-        u8 cmd4[5] = {0x02, 0x00, 0x10, 0x05, 0x00};
-        SPI_Write(cmd4, 5);
-        SPI_Write(test, 0x4);
-        SPI_Finish();
-
-        Flash_WaitForStatus(0x03, 0x00);
-
-        Flash_Read(0x100500, test, 4);
-        printf("%d. res=%08X\n", i, *(u32*)&test[0]);
-    }
-}
-
-u32 flash_addr = 0x100000;
-void flash_testbench2()
-{
-    printf("TESTING AT %08X\n", flash_addr);
-
-    u8* test = (u8*)malloc(0x1008);
-    Flash_Read(flash_addr, test, 0x1008);
-    printf("TEST BEFORE: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    u8 cmd[5] = {0x20, 0x00, 0x00, 0x00, 0x00};
-    cmd[1] = flash_addr >> 24;
-    cmd[2] = flash_addr >> 16;
-    cmd[3] = flash_addr >> 8;
-    cmd[4] = flash_addr;
-    SPI_Write(cmd, 5);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("subsec erased\n");
-
-    Flash_Read(flash_addr, test, 0x1008);
-    printf("TEST AFTER: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-
-    for (int i = 0; i < 0x100; i++)
-        test[i] = i;//0x40+i;
-    for (int i = 0x100; i < 0x200; i++)
-        test[i] = 0x77;
-
-    Flash_WaitForStatus(0x03, 0x00);
-    Flash_WriteEnable();
-
-    SPI_Start(SPI_DEVICE_FLASH, SPI_SPEED_FLASH);
-    u8 cmd2[5] = {0x02, 0x00, 0x00, 0x00, 0x00};
-    u32 flash_addr_2 = flash_addr + 8;
-    cmd2[1] = flash_addr_2 >> 24;
-    cmd2[2] = flash_addr_2 >> 16;
-    cmd2[3] = flash_addr_2 >> 8;
-    cmd2[4] = flash_addr_2;
-    SPI_Write(cmd2, 5);
-    //SPI_Write(test, 0x9);
-    SPI_Write(test, 0x102);
-    SPI_Finish();
-
-    Flash_WaitForStatus(0x03, 0x00);
-    printf("page programmed\n");
-
-    Flash_Read(flash_addr, test, 0x1008);
-    //printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[0xFF8], *(u32*)&test[0xFFC], *(u32*)&test[0x1000], *(u32*)&test[0x1004]);
-    printf("TEST AFTER: %08X %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0], *(u32*)&test[4], *(u32*)&test[8], *(u32*)&test[0xF8], *(u32*)&test[0xFC], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-    printf("TEST AFTER: %08X %08X, %08X %08X, %08X %08X\n", *(u32*)&test[0x48], *(u32*)&test[0x4C], *(u32*)&test[0x78], *(u32*)&test[0x7C], *(u32*)&test[0x100], *(u32*)&test[0x104]);
-
-    free(test);
-    flash_addr += 0x1000;
-}
 
 
 

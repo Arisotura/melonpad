@@ -6,10 +6,57 @@
 // --- General registers ------------------------------------------------------
 
 #define REG_HARDWARE_ID         *(vu32*)0xF0000000
+#define REG_CPU_RESET           *(vu32*)0xF0000004
+#define REG_UNK08               *(vu32*)0xF0000008
+#define REG_PLL_INPUTDIV        *(vu32*)0xF000000C
+#define REG_PLL_MULTIPLIER      *(vu32*)0xF0000010
+#define REG_PLL_PRIM_DIV        *(vu32*)0xF0000014
+#define REG_PLL_SEC1_DIV        *(vu32*)0xF0000018
+#define REG_PLL_SEC2_DIV        *(vu32*)0xF000001C
+#define REG_PLL_SEC3_DIV        *(vu32*)0xF0000020
+#define REG_PLL_UNK24           *(vu32*)0xF0000024
+#define REG_PLL_UNK28           *(vu32*)0xF0000028
+#define REG_PLL_UNK2C           *(vu32*)0xF000002C
+#define REG_UNK30               *(vu32*)0xF0000030
+#define REG_CLK_PIXEL           *(vu32*)0xF0000034
+#define REG_CLK_CAMERA          *(vu32*)0xF0000038
+#define REG_CLK_AUDIOAMP        *(vu32*)0xF000003C
+#define REG_CLK_UNK40           *(vu32*)0xF0000040
+#define REG_CLK_UNK44           *(vu32*)0xF0000044
+#define REG_CLK_UNK48           *(vu32*)0xF0000048
+#define REG_CLK_I2C             *(vu32*)0xF000004C
+#define REG_CLK_UNK50           *(vu32*)0xF0000050
+#define REG_CLK_SDIO            *(vu32*)0xF0000054
+#define REG_HARDWARE_RESET      *(vu32*)0xF0000058
+#define REG_UNK64               *(vu32*)0xF0000064
+
+#define PLL_DIV_2               0x001
+#define PLL_DIV_2_5             0x101
+#define PLL_DIV_N(n)            ((n) & 0x1FE)
+
+// REG_CLK_xxx settings
+#define CLK_SOURCE(i)           ((i) << 8)
+#define CLK_DIVIDER(i)          (((i)-1) & 0xFF)
+
+#define CLKSRC_32MHZ            0
+#define CLKSRC_CAMERACLK        1
+#define CLKSRC_UNK2             2
+#define CLKSRC_AUDIO_BCLK       3
+#define CLKSRC_PLL_PRIM         4
+#define CLKSRC_PLL_SEC1         5
+#define CLKSRC_PLL_SEC2         6
+#define CLKSRC_PLL_SEC3         7
+
+// REG_HARDWARE_RESET settings
+#define RESET_SDIO              (1<<6)
+#define RESET_UART              (1<<8)
+#define RESET_I2C               (1<<13)
 
 
 // --- IRQ --------------------------------------------------------------------
 
+#define REG_IRQ_ENABLEMASK0     *(vu32*)0xF0001200
+#define REG_IRQ_ENABLEMASK1     *(vu32*)0xF0001204
 #define REG_IRQ_ENABLE(i)       *(vu32*)(0xF0001208 + ((i)<<2))
 #define REG_IRQ_TRIGGER(i)      *(vu32*)(0xF0001420 + ((i)<<2))
 #define REG_IRQ_CURRENT         *(vu32*)0xF00013F0
@@ -111,7 +158,7 @@
 
 // --- SPI --------------------------------------------------------------------
 
-#define REG_SPI_SPEED           *(vu32*)0xF0004400
+#define REG_SPI_CLOCK           *(vu32*)0xF0004400
 #define REG_SPI_CNT             *(vu32*)0xF0004404
 #define REG_SPI_IRQ_STATUS      *(vu32*)0xF0004408
 #define REG_SPI_FIFO_LVL        *(vu32*)0xF000440C
@@ -121,12 +168,15 @@
 #define REG_SPI_READ_LEN        *(vu32*)0xF0004420
 #define REG_SPI_DEVICE_SEL      *(vu32*)0xF0004424
 
-// REG_SPI_SPEED settings for FLASH and UIC.
-// Not yet sure how they correlate to the actual SPI clock speed.
-// These settings mean 48MHz for FLASH and 248KHz for UIC.
-// TODO: add the other UIC clock, 8MHz (0x8018)
-#define SPI_SPEED_FLASH         0x808C
-#define SPI_SPEED_UIC           0x8400
+// REG_SPI_CLOCK settings
+#define SPI_CLK_ENABLE          (1<<15)
+#define SPI_CLK_SOURCE(i)       (i)
+#define SPI_CLK_DIVIDER(i)      ((((i)-1) & 0xFF) << 3)
+
+// Common REG_SPI_CLOCK settings for FLASH and UIC
+#define SPI_CLK_48MHZ           (SPI_CLK_ENABLE | SPI_CLK_SOURCE(CLKSRC_PLL_PRIM) | SPI_CLK_DIVIDER(18))
+#define SPI_CLK_8MHZ            (SPI_CLK_ENABLE | SPI_CLK_SOURCE(CLKSRC_32MHZ)    | SPI_CLK_DIVIDER(4))
+#define SPI_CLK_248KHZ          (SPI_CLK_ENABLE | SPI_CLK_SOURCE(CLKSRC_32MHZ)    | SPI_CLK_DIVIDER(129))
 
 // REG_SPI_CNT settings
 #define SPI_DIR_READ            (1<<1)

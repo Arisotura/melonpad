@@ -3,7 +3,7 @@
 
 void SPI_Init();
 
-void SPI_Start(u32 device, u32 speed);
+void SPI_Start(u32 device, u32 clock);
 void SPI_Finish();
 void SPI_Read(u8* buf, int len);
 void SPI_Write(u8* buf, int len);
