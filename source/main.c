@@ -5,6 +5,8 @@
 #include <wup/wup.h>
 #include <lvgl/lvgl.h>
 
+#include "sc_wifi_scan.h"
+
 
 u32 GetCP15Reg(int cn, int cm, int cp);
 
@@ -411,6 +413,7 @@ void main()
     lv_example_button_1();
     //lv_example_button_2();
     //lv_example_button_3();
+    ScWifiScan_Init();
 
     //Console_OpenDefault();
 
@@ -487,6 +490,7 @@ void main()
 
     u32 lastvbl = 0;
     int derp = 4;
+    int __test = 0;
 	for (;;)
 	{
 		frame++;
@@ -545,7 +549,9 @@ void main()
 
         if (test->ButtonsPressed & BTN_A)
         {
-            Wifi_StartScan(scantest);
+            ScWifiScan_Enter();
+            __test = 1;
+            //Wifi_StartScan(scantest);
             //printf("rebooting?\n");
             //LoadBinaryFromFlash(0x100000);
             //flash_testbench2();
@@ -680,6 +686,9 @@ void main()
             DisableIRQ();
             for (;;);
         }
+
+        if (__test)
+            ScWifiScan_Update();
 
         Wifi_Update();
 

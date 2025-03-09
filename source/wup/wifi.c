@@ -45,6 +45,7 @@ sPacket* PktQueueTail;
 static u8 Scanning;
 static fnScanCb ScanCB;
 static sScanInfo* ScanList;
+static int ScanNum;
 
 void Wifi_ResetRxFlags(u8 flags);
 void Wifi_WaitForRx(u8 flags);
@@ -55,6 +56,7 @@ void send_binary(u8* data, int len);
 void dump_data(u8* data, int len);
 void Wifi_DumpRAM();
 
+
 int Wifi_Init()
 {
     printf("wifi init\n");
@@ -63,6 +65,7 @@ int Wifi_Init()
     PktQueueTail = NULL;
 
     ScanList = NULL;
+    ScanNum = 0;
 
     u32 regval;
 
@@ -683,6 +686,7 @@ void Wifi_InitIoctls()
            res, *(u32*)&event_msgs[0], *(u32*)&event_msgs[4],
            *(u32*)&event_msgs[8], *(u32*)&event_msgs[12]);
     // 00000000/00400000/00000000/3100CD7C
+    // 0..12, 26, 69
     *(u32*)&event_msgs[0] |= 0x04001FFF;
     *(u32*)&event_msgs[8] |= 0x20;
 
@@ -1014,6 +1018,8 @@ int Wifi_StartScan(fnScanCb callback)
 
     if (Scanning) return 0;
 
+    Wifi_CleanupScanList();
+
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     u8 scanparams[72];
@@ -1038,6 +1044,61 @@ int Wifi_StartScan(fnScanCb callback)
     Scanning = 1;
     ScanCB = callback;
     return 1;
+}
+
+static void ParseWPAInfo(int type, u8* info, u32 len, u8* auth, u8* sec)
+{
+    u8 oui[3];
+    if      (type == 1) { oui[0] = 0x00; oui[1] = 0x50; oui[2] = 0xF2; }
+    else if (type == 2) { oui[0] = 0x00; oui[1] = 0x0F; oui[2] = 0xAC; }
+    else return;
+
+    u8* infoend = &info[len];
+
+    // multicast cipher
+    if (info[0] == oui[0] && info[1] == oui[1] && info[2] == oui[2])
+    {
+        if (info[3] == 0x02)
+            *sec |= WIFI_SEC_TKIP;
+        else if (info[3] == 0x04)
+            *sec |= WIFI_SEC_AES;
+    }
+    info += 4;
+
+    // unicast ciphers
+    u16 num_uni = info[0] | (info[1] << 8);
+    if ((info + 2 + (num_uni * 4)) > infoend) return;
+    info += 2;
+    for (int j = 0; j < num_uni; j++)
+    {
+        if (info[0] == oui[0] && info[1] == oui[1] && info[2] == oui[2])
+        {
+            if (info[3] == 0x02)
+                *sec |= WIFI_SEC_TKIP;
+            else if (info[3] == 0x04)
+                *sec |= WIFI_SEC_AES;
+        }
+        info += 4;
+    }
+
+    // auth types
+    u16 num_auth = info[0] | (info[1] << 8);
+    if ((info + 2 + (num_uni * 4)) > infoend) return;
+    info += 2;
+    for (int j = 0; j < num_auth; j++)
+    {
+        if (info[0] == oui[0] && info[1] == oui[1] && info[2] == oui[2])
+        {
+            if (info[3] == 0x02)
+            {
+                if (type == 1)
+                    *auth = WIFI_AUTH_WPA_PSK;
+                else if (type == 2)
+                    *auth = WIFI_AUTH_WPA2_PSK;
+            }
+        }
+        info += 4;
+    }
 }
 
 static int CompareScanInfo(sScanInfo* a, sScanInfo* b)
@@ -1077,6 +1138,8 @@ void Wifi_AddScanResult(u8* apdata, u32 len)
 
     int has_rsn = 0;
     int has_wpa = 0;
+    u8 rsn_auth = WIFI_AUTH_WPA2_UNSPEC, rsn_sec = 0;
+    u8 wpa_auth = WIFI_AUTH_WPA_UNSPEC, wpa_sec = 0;
 
     // parse 802.11 information elements
     u8* ie_data = &apdata[ie_offset];
@@ -1086,33 +1149,34 @@ void Wifi_AddScanResult(u8* apdata, u32 len)
     {
         u8 ietype = *ie_data++;
         u8 ielen = *ie_data++;
+        if (&ie_data[ielen] > ie_end) break;
 
         switch (ietype)
         {
         case 0x30:
-            has_rsn = 1;
+            if (ielen < 2) break;
+            if (ie_data[0] == 0x01 && ie_data[1] == 0x00 &&
+                ielen >= 18)
+            {
+                has_rsn = 1;
+                ParseWPAInfo(2, &ie_data[2], ielen-2, &rsn_auth, &rsn_sec);
+            }
             break;
 
         case 0xDD:
+            if (ielen < 6) break;
             if (ie_data[0] == 0x00 && ie_data[1] == 0x50 &&
-                ie_data[2] == 0xF2 && ie_data[3] == 0x01)
+                ie_data[2] == 0xF2 && ie_data[3] == 0x01 &&
+                ie_data[4] == 0x01 && ie_data[5] == 0x00 &&
+                ielen >= 22)
+            {
                 has_wpa = 1;
+                ParseWPAInfo(1, &ie_data[6], ielen-6, &wpa_auth, &wpa_sec);
+            }
             break;
         }
 
         ie_data += ielen;
-    }
-
-    // determine the type of security for this network
-    u8 sec = WIFI_SEC_OPEN;
-    if (capabilities & (1<<4))
-    {
-        if (has_rsn)
-            sec = WIFI_SEC_WPA2;
-        else if (has_wpa)
-            sec = WIFI_SEC_WPA;
-        else
-            sec = WIFI_SEC_WEP;
     }
 
     sScanInfo* info = NULL;
@@ -1156,7 +1220,9 @@ void Wifi_AddScanResult(u8* apdata, u32 len)
 
         int infolen = sizeof(sScanInfo);
         info = (sScanInfo*)malloc(infolen);
+        if (!info) return;
         memset(info, 0, infolen);
+        ScanNum++;
     }
     else
     {
@@ -1173,7 +1239,33 @@ void Wifi_AddScanResult(u8* apdata, u32 len)
 
     info->Capabilities = capabilities;
     info->Channel = chanspec & 0xFF;
-    info->Security = sec;
+
+    if (capabilities & (1<<4))
+    {
+        if (has_rsn)
+        {
+            // WPA2
+            info->AuthType = rsn_auth;
+            info->Security = rsn_sec;
+        }
+        else if (has_wpa)
+        {
+            // WPA
+            info->AuthType = wpa_auth;
+            info->Security = wpa_sec;
+        }
+        else
+        {
+            // WEP, not going to bother with it for now
+            info->AuthType = 0;
+            info->Security = 0;
+        }
+    }
+    else
+    {
+        info->AuthType = WIFI_AUTH_OPEN;
+        info->Security = 0;
+    }
 
     info->RSSI = rssi;
     if (rssi <= -91)
@@ -1238,7 +1330,7 @@ void Wifi_AddScanResult(u8* apdata, u32 len)
 
 void Wifi_CleanupScanList()
 {
-    u32 time = WUP_GetTicks();
+    /*u32 time = WUP_GetTicks();
     const u32 age_max = 5000;
 
     sScanInfo* cur = ScanList;
@@ -1248,15 +1340,27 @@ void Wifi_CleanupScanList()
 
         if ((time - cur->Timestamp) >= age_max)
         {
-            if (!cur->Prev) ScanList = NULL;
+            if (!cur->Prev) ScanList = cur->Next;
             if (cur->Prev) cur->Prev->Next = cur->Next;
             if (cur->Next) cur->Next->Prev = cur->Prev;
 
             free(cur);
+            ScanNum--;
         }
 
         cur = next;
+    }*/
+
+    sScanInfo* cur = ScanList;
+    while (cur)
+    {
+        sScanInfo* next = cur->Next;
+        free(cur);
+        cur = next;
     }
+
+    ScanList = NULL;
+    ScanNum = 0;
 }
 
 
@@ -1496,8 +1600,6 @@ int Wifi_JoinNetwork(u32 wsec, u32 wpaauth)
 
 void Wifi_Update()
 {
-    Wifi_CleanupScanList();
-
     if (RxFlags & Flag_RxEvent)
     {
         printf("got event(s)\n");
@@ -1550,7 +1652,7 @@ void Wifi_Update()
                         // empty frame: scan end
 
                         Scanning = 0;
-                        if (ScanCB) ScanCB(ScanList);
+                        if (ScanCB) ScanCB(ScanList, ScanNum);
                         ScanCB = NULL;
                     }
                 }
