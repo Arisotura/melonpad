@@ -1,12 +1,7 @@
 #ifndef _WIFI_H_
 #define _WIFI_H_
 
-/*#define WIFI_SEC_OPEN       0
-#define WIFI_SEC_WEP        1
-#define WIFI_SEC_WPA        2
-#define WIFI_SEC_WPA2       3*/
-
-#define WIFI_AUTH_OPEN          0x01
+#define WIFI_AUTH_OPEN          0x00
 #define WIFI_AUTH_WPA_UNSPEC    0x02
 #define WIFI_AUTH_WPA_PSK       0x04
 #define WIFI_AUTH_WPA2_UNSPEC   0x40
@@ -50,11 +45,6 @@ void Wifi_Update();
 int Wifi_StartScan(fnScanCb callback);
 void Wifi_CleanupScanList();
 
-/*int Wifi_StartScan(int passive);
-int Wifi_StartScan2(int passive);
-int Wifi_JoinNetwork(u32 wsec, u32 wpaauth);
-
-void Wifi_Update();
-void Wifi_Test();*/
+int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass);
 
 #endif // _WIFI_H_

@@ -687,7 +687,8 @@ void Wifi_InitIoctls()
            *(u32*)&event_msgs[8], *(u32*)&event_msgs[12]);
     // 00000000/00400000/00000000/3100CD7C
     // 0..12, 26, 69
-    *(u32*)&event_msgs[0] |= 0x04001FFF;
+    // TODO make more readable!!
+    *(u32*)&event_msgs[0] |= 0x04811FFF;
     *(u32*)&event_msgs[8] |= 0x20;
 
     //memset(event_msgs, 0, 16);
@@ -1364,233 +1365,85 @@ void Wifi_CleanupScanList()
 }
 
 
-
-
-
-// TEST
-int Wifi_JoinNetwork(u32 wsec, u32 wpaauth)
+int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass)
 {
     u32 var;
     int res;
-    u8 tmp[100];
-    //char* ssid = "ElectricAngel";
-    //char* ssid = "Freebox-375297"; // TEST
-    char* ssid = "tarteauxpommes"; // TEST
-    //char* ssid = "tarteauxfraises"; // TEST
-    //char* ssid = "WiiU182a7bd2f30f"; // TEST
-    //char* pass = "hdfgfdgjdtyygdf";
-    char* pass = "putain j'ai mal au cul";
-    //char* pass = "66826b1d30f5c41dcc7552e9a1b6b84047828d4958a794f2e22a36b786688d0e";
-    /*char pass[32] = {0x66, 0x82, 0x6b, 0x1d, 0x30, 0xf5, 0xc4, 0x1d, 0xcc, 0x75, 0x52,
-                     0xe9, 0xa1, 0xb6, 0xb8, 0x40, 0x47, 0x82, 0x8d, 0x49, 0x58, 0xa7,
-                     0x94, 0xf2, 0xe2, 0x2a, 0x36, 0xb7, 0x86, 0x68, 0x8d, 0x0e};*/
-    // WPA key 66826b1d30f5c41dcc7552e9a1b6b84047828d4958a794f2e22a36b786688d0e
-    // WPA2
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     var = 1;
-    res = Wifi_SendIoctl(3, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("res=%d resp=%08X\n", res, var);
-
-    /*char zorp[12];
-    Wifi_GetVar("country", zorp, 20);
-    send_binary(zorp, 12);*/
-
-    var = 0;
-    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("radio: res=%d resp=%08X\n", res, var);
-
-    // WLC_SET_CHANNEL
-    /*var = 48;
-    res = Wifi_SendIoctl(30, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set channel: %d\n", res);
-    if (!res) return 0;*/
-
-    /*var = 3;
-    res = Wifi_SetVar("bcn_timeout", (u8*)&var, 4);
-    printf("set bcn: res=%d resp=%08X\n", res, var);
-
-    var = 0;
-    res = Wifi_GetVar("bcn_timeout", (u8*)&var, 4);
-    printf("bcn: res=%d resp=%08X\n", res, var);*/
-
-    // WLC_SET_INFRA
-    var = 1;
-    res = Wifi_SendIoctl(20, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set infra: %d\n", res);
+    res = Wifi_SendIoctl(WLC_DOWN, 0, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
     var = 1;
-    res = Wifi_SendIoctl(2, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("res=%d resp=%08X\n", res, var);
-
-    var = 0;
-    res = Wifi_GetVar("bcn_timeout", (u8*)&var, 4);
-    printf("bcn: res=%d resp=%08X\n", res, var);
-    var = 0;
-    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("radio: res=%d resp=%08X\n", res, var);
-
-    //return 1;
-
-    // system up
-    /*var = 1;
-    res = Wifi_SendIoctl(2, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("res=%d resp=%08X\n", res, var);*/
-
-    /*char country_data[20] = "XX\x00\x00\xFF\xFF\xFF\xFFXX";
-    //res = Wifi_SetVar("country", (u8*)country_data, sizeof(country_data));
-    res = Wifi_SendIoctl(84, 2, (u8*)country_data, sizeof(country_data), (u8*)country_data, sizeof(country_data));
-    printf("country. res=%d\n", res);
-    if (!res) return 0;*/
-
-    /*var = 0xC8;
-    res = Wifi_SetVar("pm2_sleep_ret", (u8*)&var, 4);
-    printf("1. res=%d\n", res);
+    res = Wifi_SendIoctl(WLC_SET_INFRA, 2, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
     var = 1;
-    res = Wifi_SetVar("bcn_li_bcn", (u8*)&var, 4);
-    printf("1. res=%d\n", res);
+    res = Wifi_SendIoctl(WLC_UP, 0, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
-    var = 1;
-    res = Wifi_SetVar("bcn_li_dtim", (u8*)&var, 4);
-    printf("1. res=%d\n", res);
-    if (!res) return 0;
-
-    var = 10;
-    res = Wifi_SetVar("assoc_listen", (u8*)&var, 4);
-    printf("1. res=%d\n", res);
-    if (!res) return 0;*/
-
+    // TODO: set these in init?
     var = 0xC8;
     res = Wifi_GetVar("pm2_sleep_ret", (u8*)&var, 4);
-    printf("2. res=%d var=%08X\n", res, var);
+    if (!res) return 0;
 
     var = 1;
     res = Wifi_GetVar("bcn_li_bcn", (u8*)&var, 4);
-    printf("2. res=%d var=%08X\n", res, var);
+    if (!res) return 0;
 
     var = 1;
     res = Wifi_GetVar("bcn_li_dtim", (u8*)&var, 4);
-    printf("2. res=%d var=%08X\n", res, var);
+    if (!res) return 0;
 
     var = 10;
     res = Wifi_GetVar("assoc_listen", (u8*)&var, 4);
-    printf("2. res=%d var=%08X\n", res, var);
+    if (!res) return 0;
 
-    // WLC_SET_AUTH
-    // 1 == only accept encrypted frames
+    // set it to 0 for open system auth, 1 for shared key
     var = 0;
-    res = Wifi_SendIoctl(22, 2, (u8*)&var, 4, (u8*)&var, 4);
-    printf("set auth: %d\n", res);
+    res = Wifi_SendIoctl(WLC_SET_AUTH, 2, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
-    /*u32 var2[2];
-
-    var2[0] = 0; var2[1] = 1;
-    res = Wifi_SetVar("bsscfg:sup_wpa", (u8*)var2, 8);
-    printf("res: %d\n", res);
+    var = security;
+    res = Wifi_SendIoctl(WLC_SET_WSEC, 2, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
-    var2[0] = 0; var2[1] = 0xFFFFFFFF;
-    res = Wifi_SetVar("bsscfg:sup_wpa2_eapver", (u8*)var2, 8);
-    printf("res: %d\n", res);
+    var = auth;
+    res = Wifi_SendIoctl(WLC_SET_WPA_AUTH, 2, (u8*)&var, 4, NULL, 0);
     if (!res) return 0;
 
-    var2[0] = 0; var2[1] = 0x9C4;
-    res = Wifi_SetVar("bsscfg:sup_wpa_tmo", (u8*)var2, 8);
-    printf("res: %d\n", res);
-    if (!res) return 0;*/
+    var = (auth == WIFI_AUTH_OPEN) ? 0 : 1;
+    res = Wifi_SetVar("sup_wpa", (u8*)&var, 4);
+    if (!res) return 0;
 
-    if (1)
+    WUP_DelayMS(2);
+
+    if (auth != WIFI_AUTH_OPEN)
     {
-        // WPA-PSK TKIP:  2    4
-        // WPA-PSK CCMP:  4/6  4
-        //
+        // secured network, set passphrase
 
-        // WLC_SET_WSEC
-        //var = 2; // TKIP
-        //var = 4; // AES
-        //var = 6;
-        var = wsec;
-        res = Wifi_SendIoctl(134, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
-        printf("set wsec: %d\n", res);
-        if (!res) return 0;
-
-        // WLC_SET_WPA_AUTH
-        //var = 4; // WPA-PSK
-        //var = 0x80; //
-        var = wpaauth;
-        res = Wifi_SendIoctl(165, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
-        printf("set wpa auth: %d\n", res);
-        if (!res) return 0;
-
-        // sup_wpa
-        var = 1;
-        res = Wifi_SetVar("sup_wpa", (u8 * ) & var, 4);
-        printf("res: %d\n", res);
-        if (!res) return 0;
-
-        WUP_DelayMS(2);
-
-        // WLC_SET_WSEC_PMK
-        // supported by: wlfirmware.bin wlfirmware2.bin
-        // NOT SUPPORTED by: wlfirmware1.bin wlfirmware3.bin wlfirmware4.bin
+        u8 pmk[100] = {0};
         int passlen = strlen(pass);
         if (passlen > 96) passlen = 96;
-        memset(tmp, 0, sizeof(tmp));
-        *(u16 * ) & tmp[0] = passlen;
-        *(u16 * ) & tmp[2] = 1; // flags
-        strncpy((char *) &tmp[4], pass, 96);
-        res = Wifi_SendIoctl(268, 2, tmp, 100, tmp, 100);
-        printf("set key: %d\n", res);
+        *(u16*)&pmk[0] = passlen;
+        *(u16*)&pmk[2] = 1; // flags, 1 for passphrase
+        strncpy((char*)&pmk[4], pass, 96);
+        res = Wifi_SendIoctl(WLC_SET_WSEC_PMK, 2, pmk, 100, NULL, 0);
         if (!res) return 0;
-    }
-    else
-    {
-        // open wifi
-
-        // WLC_SET_WSEC
-        var = 0;
-        res = Wifi_SendIoctl(134, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
-        printf("set wsec: %d\n", res);
-        if (!res) return 0;
-
-        /*var = 0;
-        res = Wifi_SendIoctl(165, 2, (u8 * ) & var, 4, (u8 * ) & var, 4);
-        printf("set wpa auth: %d\n", res);
-        if (!res) return 0;
-
-        var = 0;
-        res = Wifi_SetVar("sup_wpa", (u8 * ) & var, 4);
-        printf("res: %d\n", res);
-        if (!res) return 0;*/
     }
 
     Wifi_ResetRxFlags(Flag_RxEvent);
 
-    //u8 event_msgs[16] = {0xEB, 0x1F, 0xBB, 0x04, 0x50, 0x40, 0x40, 0x80, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
-    //u8 event_msgs[16] = {0xFF, 0x1F, 0xBB, 0x04, 0x50, 0x40, 0x40, 0x80, 0x00, 0x80, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00};
-    u8 event_msgs[16] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    res = Wifi_SetVar("event_msgs", event_msgs, 16);
-    printf("res=%d\n", res);
-
-    // WLC_SET_SSID
-    // 4+32   36
-    // 6+2    8
-    // 4+2    6
-    //        50
+    // set SSID - this initiates the connection
+    u8 ssiddata[42] = {0};
     int ssidlen = strlen(ssid);
     if (ssidlen > 32) ssidlen = 32;
-    memset(tmp, 0, sizeof(tmp));
-    *(u32 * ) & tmp[0] = ssidlen;
-    strncpy((char *) &tmp[4], ssid, 32);
-    memset(&tmp[4+32], 0xFF, 6);
-    res = Wifi_SendIoctl(26, 2, tmp, 50, tmp, 50);
-    printf("set SSID: %d\n", res);
+    *(u32*)&ssiddata[0] = ssidlen;
+    strncpy((char*)&ssiddata[4], ssid, 32);
+    memset(&ssiddata[4+32], 0xFF, 6);
+    res = Wifi_SendIoctl(WLC_SET_SSID, 2, ssiddata, 42, NULL, 0);
     if (!res) return 0;
 
     return 1;

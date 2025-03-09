@@ -543,8 +543,8 @@ void main()
         {
             //printf("lucario?\n");
             //LoadBinaryFromFlash(0x500000);
-            void Wifi_JoinNetwork(u32, u32);
-            Wifi_JoinNetwork(6, 0x84);
+            //void Wifi_JoinNetwork(u32, u32);
+            //Wifi_JoinNetwork(6, 0x84);
         }
 
         if (test->ButtonsPressed & BTN_A)
