@@ -313,9 +313,26 @@ int Wifi_AI_SetCore(u32 coreid)
     return 0;
 }
 
+u8 Wifi_AI_GetCoreRevision()
+{
+    return CurCore->CIb >> 24;
+}
+
 u32 Wifi_AI_GetCoreMemBase()
 {
     return CurCore->MemBase;
+}
+
+u32 Wifi_AI_ReadCoreMem(u32 addr)
+{
+    u32 val;
+    SDIO_ReadF1Memory(CurCore->MemBase + addr, (u8*)&val, 4);
+    return val;
+}
+
+void Wifi_AI_WriteCoreMem(u32 addr, u32 val)
+{
+    SDIO_WriteF1Memory(CurCore->MemBase + addr, (u8*)&val, 4);
 }
 
 int Wifi_AI_IsCoreUp()

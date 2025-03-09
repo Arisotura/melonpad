@@ -12,8 +12,11 @@ u32 Wifi_AI_GetRAMSize();
 
 u32 Wifi_AI_GetCore();
 int Wifi_AI_SetCore(u32 coreid);
+u8 Wifi_AI_GetCoreRevision();
 
 u32 Wifi_AI_GetCoreMemBase();
+u32 Wifi_AI_ReadCoreMem(u32 addr);
+void Wifi_AI_WriteCoreMem(u32 addr, u32 val);
 
 int Wifi_AI_IsCoreUp();
 void Wifi_AI_DisableCore(u32 ctrl);

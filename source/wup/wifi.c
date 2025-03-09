@@ -17,6 +17,8 @@
 
 static u32 RAMSize;
 
+static u8 MACAddr[6];
+
 #define Flag_RxMail     (1<<0)
 #define Flag_RxCtl      (1<<1)
 #define Flag_RxEvent    (1<<2)
@@ -24,6 +26,7 @@ static u32 RAMSize;
 
 static u8 TxSeqno;
 static u16 TxCtlId;
+static u8 TxBuffer[4096];
 
 static volatile u8 RxFlags;
 static u32 RxMail;
@@ -31,9 +34,9 @@ static u8 RxCtlBuffer[4096];
 static u8 RxEventBuffer[512];
 static u8 RxDataBuffer[4096];
 
-typedef struct
+typedef struct sPacket
 {
-    void* Next;
+    struct sPacket* Next;
     u32 Length;
     u8 Data[1];
 
@@ -47,19 +50,24 @@ static fnScanCb ScanCB;
 static sScanInfo* ScanList;
 static int ScanNum;
 
+int Wifi_InitIoctls();
+
 void Wifi_ResetRxFlags(u8 flags);
 void Wifi_WaitForRx(u8 flags);
 
 int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u32 len_out);
-void Wifi_InitIoctls();
+int Wifi_GetVar(char* var, u8* data, u32 len);
+int Wifi_SetVar(char* var, u8* data, u32 len);
+
 void send_binary(u8* data, int len);
 void dump_data(u8* data, int len);
-void Wifi_DumpRAM();
 
 
 int Wifi_Init()
 {
     printf("wifi init\n");
+
+    memset(MACAddr, 0, sizeof(MACAddr));
 
     PktQueueHead = NULL;
     PktQueueTail = NULL;
@@ -87,46 +95,24 @@ int Wifi_Init()
     if (!Wifi_AI_Enumerate())
         return 0;
 
-    u32 tmp = 0;
-    SDIO_ReadF1Memory(0x1800002C, (u8*)&tmp, 4);
-    printf("CHIPSTATUS=%08X\n", tmp);
-    tmp = 0;
-    SDIO_ReadF1Memory(0x18000004, (u8*)&tmp, 4);
-    printf("CAPS=%08X\n", tmp);
-
-    u32 pmu = 0;
-    SDIO_ReadF1Memory(0x18000604, (u8*)&pmu, 4);
-    printf("PMU CAPS=%08X\n", pmu);
-
     Wifi_AI_SetCore(WIFI_CORE_ARMCM3);
-    //Wifi_AI_IsCoreUp();
     Wifi_AI_DisableCore(0);
-    //Wifi_AI_ResetCore(0, 0);
 
-    // TODO: only do this if the backplane core revision is >= 20
-    // our core is rev 35
+    if (Wifi_AI_GetCoreRevision() >= 20)
     {
         Wifi_AI_SetCore(WIFI_CORE_BACKPLANE);
-        //Wifi_AI_IsCoreUp();
-        u32 base = Wifi_AI_GetCoreMemBase();
-        printf("backplane base=%08X\n", base);
 
-        regval = 0;
-        SDIO_WriteF1Memory(base+0x058, (u8*)&regval, 4);
-        regval = 0;
-        SDIO_WriteF1Memory(base+0x05C, (u8*)&regval, 4);
+        // GPIO pullup/pulldown
+        Wifi_AI_WriteCoreMem(0x058, 0);
+        Wifi_AI_WriteCoreMem(0x05C, 0);
 
         // only if revision >= 21
-        regval = 0;
-        SDIO_ReadF1Memory(base+0x008, (u8*)&regval, 4);
-        regval |= 0x4;
-        SDIO_WriteF1Memory(base+0x008, (u8*)&regval, 4);
+        // ??
+        regval = Wifi_AI_ReadCoreMem(0x008);
+        Wifi_AI_WriteCoreMem(0x008, regval | 0x4);
+
     }
 
-    // si_attach done
-
-    // TODO? si_socram_size() potentially writes to regs
-    // only if we got banks of memory, and we don't.
     RAMSize = Wifi_AI_GetRAMSize();
     if (!RAMSize)
         return 0;
@@ -134,13 +120,8 @@ int Wifi_Init()
 
     // reset backplane upon SDIO reset
     Wifi_AI_SetCore(WIFI_CORE_SDIOD);
-    u32 base = Wifi_AI_GetCoreMemBase();
-    printf("SDIOD base=%08X\n", base);
-    regval = 0;
-    SDIO_ReadF1Memory(base+0x000, (u8*)&regval, 4);
-    printf("SDIO shito regval=%08X\n", regval);
-    regval |= (1<<1);
-    SDIO_WriteF1Memory(base+0x000, (u8*)&regval, 4);
+    regval = Wifi_AI_ReadCoreMem(0x000);
+    Wifi_AI_WriteCoreMem(0x000, regval | (1<<1));
 
     // removeme?
     {
@@ -159,11 +140,9 @@ int Wifi_Init()
 
     {
         Wifi_AI_SetCore(WIFI_CORE_SDIOD);
-        u32 base = Wifi_AI_GetCoreMemBase();
 
         // enable frame transfers
-        regval = (4 << 16);
-        SDIO_WriteF1Memory(base + 0x48, (u8*)&regval, 4);
+        Wifi_AI_WriteCoreMem(0x048, (4<<16));
 
         // enable F2
         u8 fn = (1<<1) | (1<<2);
@@ -183,32 +162,22 @@ int Wifi_Init()
         printf("F2 came up? %02X = %02X\n", regval, 6);
 
         // enable interrupts
-        regval = 0x200000F0;
-        SDIO_WriteF1Memory(base + 0x24, (u8*)&regval, 4);
+        Wifi_AI_WriteCoreMem(0x024, 0x200000F0);
 
         // set watermark
         regval = 8;
         SDIO_WriteCardRegs(1, 0x10008, 1, (u8*)&regval);
     }
-    // if return here: allows reset but only once?
+
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     TxSeqno = 0xFF;
     TxCtlId = 1;
     RxFlags = 0;
     SDIO_EnableCardIRQ();
-    // if return here: allows reset but wifi fail
-    Wifi_InitIoctls();
 
-    /*for (int i = 0; i < 6; i++)
-    {
-        u32 addr = 0x18100500 + (i<<12);
-        u32 val;
-        SDIO_ReadF1Memory(addr, (u8*)&val, 4);
-        printf("core %d: status=%08X\n", i, val);
-    }*/
-
-    //Wifi_DumpRAM();
+    if (!Wifi_InitIoctls())
+        return 0;
 
     SDIO_SetClocks(0, 0);
     printf("Wifi: ready to go\n");
@@ -217,6 +186,8 @@ int Wifi_Init()
 
 void Wifi_DeInit()
 {
+    // TODO: disconnect if needed
+
     SDIO_SetClocks(1, 0);
 
     /*u32 var = 1;
@@ -327,9 +298,7 @@ int Wifi_SetUploadState(int state)
         if (!Wifi_AI_SetCore(WIFI_CORE_SDIOD))
             return 0;
 
-        u32 base = Wifi_AI_GetCoreMemBase();
-        u32 ff = 0xFFFFFFFF;
-        SDIO_WriteF1Memory(base+0x020, (u8*)&ff, 4);
+        Wifi_AI_WriteCoreMem(0x020, 0xFFFFFFFF);
 
         if (!Wifi_AI_SetCore(WIFI_CORE_ARMCM3))
             return 0;
@@ -427,50 +396,123 @@ int Wifi_UploadFirmware()
     return 1;
 }
 
-void Wifi_DumpRAM()
+int Wifi_InitIoctls()
 {
-    printf("dumping wifi RAM\n");
+    u32 var, resp;
+    int res;
 
-    int tmplen = 0x2000;
-    u8* verbuf = (u8*)memalign(16, tmplen);
-    u32 fw_length = RAMSize;
-    for (int i = 0; i < fw_length; )
+    // get MAC address
+    res = Wifi_GetVar("cur_etheraddr", MACAddr, 6);
+    if (!res) return 0;
+
+    // disable roaming
+    var = 1;
+    res = Wifi_SetVar("roam_off", (u8*)&var, 4);
+    if (!res) return 0;
+
+    // set band
+    var = 1; // 0=auto 1=5GHz 2=2.4GHz
+    res = Wifi_SendIoctl(WLC_SET_BAND, 2, (u8*)&var, 4, NULL, 0);
+    if (!res) return 0;
+
+    // sgi_tx & sgi_rx
+    var = 0;
+    res = Wifi_SetVar("sgi_tx", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 0;
+    res = Wifi_SetVar("sgi_rx", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 4;
+    res = Wifi_SetVar("ampdu_txfail_event", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 1;
+    res = Wifi_SetVar("ac_remap_mode", (u8*)&var, 4);
+    if (!res) return 0;
+
+    u8 event_msgs[16] = {0};
+#define setevent(i) event_msgs[(i)>>3] |= (1 << ((i)&0x7))
+    setevent(WLC_E_SET_SSID);
+    setevent(WLC_E_JOIN);
+    setevent(WLC_E_DEAUTH);
+    setevent(WLC_E_DEAUTH_IND);
+    setevent(WLC_E_REASSOC);
+    setevent(WLC_E_REASSOC_IND);
+    setevent(WLC_E_DISASSOC);
+    setevent(WLC_E_DISASSOC_IND);
+    setevent(WLC_E_LINK);
+    setevent(WLC_E_TXFAIL);
+    setevent(WLC_E_PRUNE);
+    setevent(WLC_E_PSK_SUP);
+    setevent(WLC_E_ESCAN_RESULT);
+
+    res = Wifi_SetVar("event_msgs", event_msgs, 16);
+    if (!res) return 0;
+
+    // set country
+    u16 countrycode;
+    UIC_ReadEEPROM(0x66, (u8*)&countrycode, 2);
+
+    u8 country_data[12] = {0};
+    *(u16*)&country_data[0] = countrycode;
+    *(u16*)&country_data[8] = countrycode;
+    res = Wifi_SetVar("country", (u8*)country_data, sizeof(country_data));
+    if (!res) return 0;
+
+    var = 1;
+    res = Wifi_SendIoctl(WLC_SET_INFRA, 2, (u8*)&var, 4, NULL, 0);
+    if (!res) return 0;
+
+    // system up
+    var = 1;
+    res = Wifi_SendIoctl(WLC_UP, 0, (u8*)&var, 4, NULL, 0);
+    if (!res) return 0;
+
+    // set lifetime
+    u32 lifetimes[] = {5, 25, 15, 16, 0};
+    for (int i = 0; lifetimes[i]; i++)
     {
-        int chunk = tmplen;
-        if ((i + chunk) > fw_length)
-            chunk = fw_length - i;
-
-        if (!SDIO_ReadF1Memory(i, verbuf, chunk))
-        {
-            printf("read failed\n");
-            return;
-        }
-
-        dump_data(verbuf, chunk);
-
-        i += chunk;
+        u32 data[2] = {i, lifetimes[i]};
+        res = Wifi_SetVar("lifetime", (u8*)data, 8);
+        if (!res) return 0;
     }
 
-    printf("OK\n");
-    free(verbuf);
+    var = 0xC8;
+    res = Wifi_GetVar("pm2_sleep_ret", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 1;
+    res = Wifi_GetVar("bcn_li_bcn", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 1;
+    res = Wifi_GetVar("bcn_li_dtim", (u8*)&var, 4);
+    if (!res) return 0;
+
+    var = 10;
+    res = Wifi_GetVar("assoc_listen", (u8*)&var, 4);
+    if (!res) return 0;
+
+    return 1;
 }
 
 
-u8 fazil[2048+28];
 int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u32 len_out)
 {
     int ret = 1;
 
-    //u8 buf[256];
-    u8* buf = &fazil[0];
+    u8* buf = &TxBuffer[0];
     u16 wanted_id = TxCtlId;
 
+    // actual frame length can be smaller than requested data length
+    // for ioctls that respond with a large amount of data
     int totallen = len_in + 16;
     if (totallen > 1518)
         totallen = 1518;
     totallen += 12;
 
-    //u16 totallen = len_in + 28;
     *(u16*)&buf[0] = totallen;
     *(u16*)&buf[2] = ~totallen;
     buf[4] = TxSeqno++;
@@ -486,23 +528,14 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
 
     Wifi_ResetRxFlags(Flag_RxCtl);
 
+    // send control frame
+    // length should be rounded to a multiple of the block size
     u16 len_rounded = (totallen + 0x3F) & ~0x3F;
-    //printf("sending %d bytes\n", len_rounded);
-    //send_binary(buf, len_rounded);
     SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
 
-    for (;;)
-    {
-        Wifi_WaitForRx(Flag_RxCtl);
-        //if ((vu8)RxCtlBuffer[4] == TxSeqno)
-        //    break;
-        //send_binary(RxCtlBuffer, totallen);
-        break;
+    // wait for response
+    Wifi_WaitForRx(Flag_RxCtl);
 
-        Wifi_ResetRxFlags(Flag_RxCtl);
-    }
-
-    //if (data_out)
     {
         int irq = DisableIRQ();
 
@@ -544,42 +577,6 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
     return ret;
 }
 
-int Wifi_SendPacket(u8* data_in, u32 len_in)
-{
-    int ret = 1;
-
-    //u8 buf[256];
-    u8* buf = &fazil[0];
-
-    int totallen = len_in;
-    if (totallen > 1518)
-        totallen = 1518;
-    //totallen += 14;
-    totallen += 18;
-
-    //u16 totallen = len_in + 28;
-    *(u16*)&buf[0] = totallen;
-    *(u16*)&buf[2] = ~totallen;
-    buf[4] = TxSeqno++;
-    buf[5] = 0x02; // channel (data)
-    buf[6] = 0;
-    buf[7] = 14; // offset to data
-    *(u32*)&buf[8] = 0; // ??
-    //*(u16*)&buf[12] = 0;
-    //memcpy(&buf[14], data_in, len_in);
-    *(u16*)&buf[14] = 0x20; // ??? must be 0x10 or 0x20
-    *(u16*)&buf[16] = 0;
-    memcpy(&buf[18], data_in, len_in);
-
-    u16 len_rounded = (totallen + 0x3F) & ~0x3F;
-    //printf("sending %d bytes\n", len_rounded);
-    send_binary(buf, len_rounded);
-    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
-    //printf("packet sent\n");
-
-    return ret;
-}
-
 int Wifi_GetVar(char* var, u8* data, u32 len)
 {
     u8 buf[128];
@@ -599,7 +596,6 @@ int Wifi_SetVar(char* var, u8* data, u32 len)
 {
     u8 buf[128];
 
-    //printf("Wifi_SetVar(%s)\n", var);
     int varlen = strlen(var);
     memcpy(buf, var, varlen);
     buf[varlen] = 0;
@@ -611,232 +607,45 @@ int Wifi_SetVar(char* var, u8* data, u32 len)
     return 1;
 }
 
-void Wifi_InitIoctls()
+
+int Wifi_SendPacket(u8* data_in, u32 len_in)
 {
-    u32 var, resp;
-    int res;
+    int ret = 1;
 
-    // get MAC address
-    u8 macaddr[6];
-    res = Wifi_GetVar("cur_etheraddr", macaddr, 6);
-    printf("res=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X\n",
-           res, macaddr[0], macaddr[1], macaddr[2], macaddr[3], macaddr[4], macaddr[5]);
+    u8* buf = &TxBuffer[0];
 
-    // set roam_off
-    var = 1;
-    res = Wifi_SetVar("roam_off", (u8*)&var, 4);
-    printf("res=%d\n", res);
+    int totallen = len_in;
+    totallen += 18;
 
-    /*var = 23456;
-    res = Wifi_SendIoctl(109, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("-- res=%d, gmode=%d\n", res, var);
+    *(u16*)&buf[0] = totallen;
+    *(u16*)&buf[2] = ~totallen;
+    buf[4] = TxSeqno++;
+    buf[5] = 0x02; // channel (data)
+    buf[6] = 0;
+    buf[7] = 14; // offset to data
+    *(u32*)&buf[8] = 0; // ??
+    *(u16*)&buf[14] = 0x20; // ??? must be 0x10 or 0x20
+    *(u16*)&buf[16] = 0;
+    memcpy(&buf[18], data_in, len_in);
 
-    var = 23456;
-    res = Wifi_GetVar("nmode", (u8*)&var, 4);
-    printf("-- res=%d, nmode=%d\n", res, var);
+    // send frame
+    u16 len_rounded = (totallen + 0x3F) & ~0x3F;
+    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
 
-    var = 23456;
-    res = Wifi_GetVar("nmode_protection", (u8*)&var, 4);
-    printf("-- res=%d, nmodeproot=%d\n", res, var);*/
-
-    /*var = 1;
-    res = Wifi_SetVar("nmode", (u8*)&var, 4);
-    printf("-- set nmode, res=%d\n", res);*/
-
-    /*var = 23456;
-    res = Wifi_GetVar("nmode", (u8*)&var, 4);
-    printf("-- res=%d, nmode=%d\n", res, var);*/
-
-    u32 bands[25];
-    res = Wifi_SendIoctl(140, 0, (u8*)bands, 100, (u8*)bands, 100);
-    printf("bands res=%d -- %d %d %d\n", res, bands[0], bands[1], bands[2]);
-    // wlfirmware.bin:       1 1 1
-    // wlfirmware_maybeopen: 1 2 1
-    // wlfirmware2:          1 2 1
-    // wlfirmware2 does not set MAC addr properly?
-
-    // set band
-    //var = 1;
-    var = 1; // 0=auto 1=5GHz 2=2.4GHz
-    //var = 2; // 0=auto 1=5GHz 2=2.4GHz
-    res = Wifi_SendIoctl(142, 2, (u8*)&var, 4, (u8*)&resp, 4);
-    printf("res=%d\n", res);
-
-    // sgi_tx & sgi_rx
-    var = 0;
-    res = Wifi_SetVar("sgi_tx", (u8*)&var, 4);
-    printf("res=%d\n", res);
-    var = 0;
-    res = Wifi_SetVar("sgi_rx", (u8*)&var, 4);
-    printf("res=%d\n", res);
-
-    // not supported
-    var = 4;
-    res = Wifi_SetVar("ampdu_txfail_event", (u8*)&var, 4);
-    printf("res=%d\n", res);
-
-    // not supported
-    var = 1;
-    res = Wifi_SetVar("ac_remap_mode", (u8*)&var, 4);
-    printf("res=%d\n", res);
-
-    u8 event_msgs[16];
-    res = Wifi_GetVar("event_msgs", event_msgs, 16);
-    printf("res=%d evt=%08X/%08X/%08X/%08X\n",
-           res, *(u32*)&event_msgs[0], *(u32*)&event_msgs[4],
-           *(u32*)&event_msgs[8], *(u32*)&event_msgs[12]);
-    // 00000000/00400000/00000000/3100CD7C
-    // 0..12, 26, 69
-    // TODO make more readable!!
-    *(u32*)&event_msgs[0] |= 0x04811FFF;
-    *(u32*)&event_msgs[8] |= 0x20;
-
-    //memset(event_msgs, 0, 16);
-    res = Wifi_SetVar("event_msgs", event_msgs, 16);
-    printf("res=%d\n", res);
-
-    // get radio disable
-    var = 1;
-    res = Wifi_SendIoctl(37, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("res=%d radiodisable=%02X (%08X)\n", res, (u8)var, var);
-
-    // get SRL
-    var = 0;
-    res = Wifi_SendIoctl(31, 0, (u8*)&var, 1, (u8*)&var, 1);
-    printf("res=%d SRL=%02X\n", res, (u8)var);
-
-    var = 0;
-    res = Wifi_GetVar("ampdu", (u8*)&var, 4);
-    printf("res=%d ampdu=%08X\n", res, var);
-
-    var = 0;
-    res = Wifi_GetVar("country", (u8*)&var, 4);
-    //res = res = Wifi_SendIoctl(83, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("res=%d country=%08X\n", res, var);
-
-    // get channel
-    var = 0xFF;
-    res = Wifi_SendIoctl(29, 0, (u8*)&var, 1, (u8*)&resp, 1);
-    printf("res=%d chan=%02X\n", res, (u8)resp);
-
-    // get TX antenna
-    var = 0xFF;
-    res = Wifi_SendIoctl(61, 0, (u8*)&var, 1, (u8*)&resp, 1);
-    printf("res=%d txant=%02X\n", res, (u8)resp);
-
-    // get antenna div
-    var = 0xFF;
-    res = Wifi_SendIoctl(63, 0, (u8*)&var, 1, (u8*)&resp, 1);
-    printf("res=%d antdiv=%02X\n", res, (u8)resp);
-
-    // set country
-    char country_data[12] = {0x45, 0x55, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x45, 0x55, 0x00, 0x00};
-    //char country_data[12] = {0x46, 0x52, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x52, 0x00, 0x00};
-    res = Wifi_SetVar("country", (u8*)country_data, sizeof(country_data));
-    //res = Wifi_SendIoctl(84, 2, (u8*)country_data, 12, (u8*)country_data, 12);
-    printf("country. res=%d\n", res);
-
-    /* EU: immediate
-     * got event
-00000000: 5C 00 A3 FF 2E 01 00 0E 00 2B 00 00 00 00 20 00
-00000010: 00 00 40 F4 07 EA 66 19 42 F4 07 EA 66 19 88 6C
-00000020: 80 01 00 68 00 00 10 18 00 01 00 02 00 18 00 00
-00000030: 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00
-00000040: 00 00 FF 00 00 00 00 00 77 6C 30 00 00 00 00 00
-00000050: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00000060: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00000070: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-     FR: late
-     got event
-00000000: 5C 00 A3 FF 2C 01 00 0E 00 2B 00 00 00 00 20 00
-00000010: 00 00 40 F4 07 EA 66 19 42 F4 07 EA 66 19 88 6C
-00000020: 80 01 00 68 00 00 10 18 00 01 00 02 00 18 00 00
-00000030: 00 00 00 00 00 01 00 00 00 00 00 00 00 00 00 00
-00000040: 00 00 FF 00 00 00 00 00 77 6C 30 00 00 00 00 00
-00000050: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00000060: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-00000070: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-
-*/
-
-    // system up
-    var = 1;
-    res = Wifi_SendIoctl(2, 0, (u8*)&var, 4, (u8*)&resp, 4);
-    printf("res=%d resp=%08X\n", res, resp);
-
-    // set lifetime
-    u32 lifetimes[] = {5, 25, 15, 16, 0};
-    for (int i = 0; lifetimes[i]; i++)
-    {
-        u32 data[2] = {i, lifetimes[i]};
-        res = Wifi_SetVar("lifetime", (u8*)data, 8);
-        printf("res=%d\n", res);
-    }
-
-    /*var = 0;
-    res = Wifi_GetVar("devid", (u8*)&var, 2);
-    printf("res=%d devid=%04X\n", res, var);*/
-    for (int i = 0; i < 6; i++)
-    {
-        u32 base = 0x18100000 + (i << 12);
-        u32 lo, hi;
-        SDIO_ReadF1Memory(base+0x408, (u8*)&lo, 4);
-        SDIO_ReadF1Memory(base+0x500, (u8*)&hi, 4);
-        printf("%d: lo=%08X hi=%08X\n", i, lo, hi);
-    }
-
-    /*SDIO_ReadF1Memory(0x18101408, (u8*)&var, 4);
-    var |= 0x2000; // band switch
-    SDIO_WriteF1Memory(0x18101408, (u8*)&var, 4);
-    WUP_DelayMS(50);*/
-
-    /*SDIO_ReadF1Memory(0x18101408, (u8*)&var, 4);
-    var &= ~0x1;
-    SDIO_WriteF1Memory(0x18101408, (u8*)&var, 4);
-    WUP_DelayMS(50);
-
-    SDIO_ReadF1Memory(0x18101408, (u8*)&var, 4);
-    var &= ~0x2000; // band switch
-    var |= 0x8; // reset
-    SDIO_WriteF1Memory(0x18101408, (u8*)&var, 4);
-    WUP_DelayMS(50);
-
-    SDIO_ReadF1Memory(0x18101408, (u8*)&var, 4);
-    var |= 0x2000; // band switch
-    var &= ~0x8;
-    SDIO_WriteF1Memory(0x18101408, (u8*)&var, 4);
-    WUP_DelayMS(50);
-
-    SDIO_ReadF1Memory(0x18101408, (u8*)&var, 4);
-    printf("new flags: %08X\n", var);
-
-    res = Wifi_SendIoctl(140, 0, (u8*)bands, 100, (u8*)bands, 100);
-    printf("bands res=%d -- %d %d %d\n", res, bands[0], bands[1], bands[2]);*/
-
-    /*var = 0xF;
-    res = Wifi_SetVar("msglevel", (u8*)&var, 4);
-    printf("set level res=%d\n", res);
-
-    char* dump = (char*)malloc(8192);
-    res = Wifi_GetVar("dump", (u8*)dump, 8192);
-    printf("res=%d\n", res);
-    puts(dump);*/
+    return ret;
 }
-
 
 
 void Wifi_ResetRxFlags(u8 flags)
 {
     RxFlags &= ~flags;
 }
-volatile int derp = 0; volatile u32 farpo;
+
 void Wifi_WaitForRx(u8 flags)
 {
     while (!(RxFlags & flags))
     {
         WaitForIRQ();
-        if (derp) printf("derp=%d %08X\n", derp, farpo);
     }
 }
 
@@ -849,27 +658,21 @@ void Wifi_RxHostMail()
 
     RxFlags |= Flag_RxMail;
 }
-int _write(int file, char *ptr, int len);
-u8 fazilpet[64];
 
 void Wifi_RxData()
 {
     // read header
-    //u8 header[64];
-    u8* header = &fazilpet[0];
+    u8 header[64];
     SDIO_ReadCardData(2, 0x8000, header, 64, 0);
 
     u16 len = *(u16*)&header[0];
     u16 not_len = *(u16*)&header[2];
-    if (len < 12) derp |= 1;
-    if (len != (u16)(~not_len)) derp |= 2;
     if (len < 12) return;
     if (len != (u16)(~not_len)) return;
 
     u8 seqno = header[4];
     u8 chan = header[5];
     u8 dataoffset = header[7];
-    if (dataoffset < 12) derp |= 4;
     if (dataoffset < 12) return;
 
     // TODO account for credits
@@ -879,17 +682,12 @@ void Wifi_RxData()
         // control channel
 
         u16 len_rounded = (len + 0x3F) & ~0x3F;
-        //if (len_rounded > 512) derp |= 8;
-        if (len_rounded > 4096) derp |= 8;
-        farpo = len;
-        //if (len_rounded > 512) return;
         if (len_rounded > 4096) return;
 
         memcpy(RxCtlBuffer, header, 64);
         if (len_rounded > 64)
             SDIO_ReadCardData(2, 0x8000, &RxCtlBuffer[64], len_rounded-64, 0);
 
-        //_write(1, "ctl__\n", 6);
         RxFlags |= Flag_RxCtl;
     }
     else if (chan == 1)
@@ -903,7 +701,7 @@ void Wifi_RxData()
         if (!pkt)
         {
             // TODO signal the error somehow
-            _write(1, "FAIL1\n", 6);
+            //_write(1, "FAIL1\n", 6);
             return;
         }
 
@@ -964,7 +762,7 @@ void Wifi_RxData()
     }
     else if (chan == 2)
     {
-        _write(1, "DATA!\n", 6);
+        //_write(1, "DATA!\n", 6);
     }
     else
     {
@@ -1371,35 +1169,6 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass)
     int res;
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
-
-    var = 1;
-    res = Wifi_SendIoctl(WLC_DOWN, 0, (u8*)&var, 4, NULL, 0);
-    if (!res) return 0;
-
-    var = 1;
-    res = Wifi_SendIoctl(WLC_SET_INFRA, 2, (u8*)&var, 4, NULL, 0);
-    if (!res) return 0;
-
-    var = 1;
-    res = Wifi_SendIoctl(WLC_UP, 0, (u8*)&var, 4, NULL, 0);
-    if (!res) return 0;
-
-    // TODO: set these in init?
-    var = 0xC8;
-    res = Wifi_GetVar("pm2_sleep_ret", (u8*)&var, 4);
-    if (!res) return 0;
-
-    var = 1;
-    res = Wifi_GetVar("bcn_li_bcn", (u8*)&var, 4);
-    if (!res) return 0;
-
-    var = 1;
-    res = Wifi_GetVar("bcn_li_dtim", (u8*)&var, 4);
-    if (!res) return 0;
-
-    var = 10;
-    res = Wifi_GetVar("assoc_listen", (u8*)&var, 4);
-    if (!res) return 0;
 
     // set it to 0 for open system auth, 1 for shared key
     var = 0;
