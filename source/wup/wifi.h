@@ -10,6 +10,15 @@
 #define WIFI_SEC_TKIP           0x02
 #define WIFI_SEC_AES            0x04
 
+// status code for join callback
+// TODO they may not reflect the entire complexity of reality
+#define WIFI_JOIN_SUCCESS       0
+#define WIFI_JOIN_FAIL          -1 // generic failure code
+#define WIFI_JOIN_NOTFOUND      -2 // network not found
+#define WIFI_JOIN_BADSEC        -3 // incorrect auth/security parameters
+#define WIFI_JOIN_BADPASS       -4 // incorrect passphrase
+#define WIFI_JOIN_TIMEOUT       -5 // timeout
+
 typedef struct sScanInfo
 {
     u8 SSIDLength;
@@ -31,6 +40,7 @@ typedef struct sScanInfo
 } sScanInfo;
 
 typedef void (*fnScanCb)(sScanInfo* list, int num);
+typedef void (*fnJoinCb)(int status);
 
 int Wifi_Init();
 void Wifi_DeInit();
@@ -45,6 +55,6 @@ void Wifi_Update();
 int Wifi_StartScan(fnScanCb callback);
 void Wifi_CleanupScanList();
 
-int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass);
+int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, fnJoinCb callback);
 
 #endif // _WIFI_H_

@@ -50,6 +50,13 @@ static fnScanCb ScanCB;
 static sScanInfo* ScanList;
 static int ScanNum;
 
+static u8 Joining;
+static u8 JoinOpen;
+static fnJoinCb JoinCB;
+static u32 JoinStartTimestamp;
+
+static u8 LinkStatus;
+
 int Wifi_InitIoctls();
 
 void Wifi_ResetRxFlags(u8 flags);
@@ -72,8 +79,17 @@ int Wifi_Init()
     PktQueueHead = NULL;
     PktQueueTail = NULL;
 
+    Scanning = 0;
+    ScanCB = NULL;
     ScanList = NULL;
     ScanNum = 0;
+
+    Joining = 0;
+    JoinOpen = 0;
+    JoinCB = NULL;
+    JoinStartTimestamp = 0;
+
+    LinkStatus = 0;
 
     u32 regval;
 
@@ -1163,10 +1179,12 @@ void Wifi_CleanupScanList()
 }
 
 
-int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass)
+int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, fnJoinCb callback)
 {
     u32 var;
     int res;
+
+    if (Joining) return 0;
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
@@ -1215,6 +1233,11 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass)
     res = Wifi_SendIoctl(WLC_SET_SSID, 2, ssiddata, 42, NULL, 0);
     if (!res) return 0;
 
+    Joining = 1;
+    JoinOpen = (auth == WIFI_AUTH_OPEN);
+    JoinCB = callback;
+    JoinStartTimestamp = WUP_GetTicks();
+
     return 1;
 }
 
@@ -1222,14 +1245,22 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass)
 
 void Wifi_Update()
 {
+    if (Joining)
+    {
+        u32 time = WUP_GetTicks() - JoinStartTimestamp;
+        if (time >= 10000)
+        {
+            if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
+            JoinCB = NULL;
+            Joining = 0;
+        }
+    }
+
     if (RxFlags & Flag_RxEvent)
     {
-        printf("got event(s)\n");
         sPacket* pkt;
         while ((pkt = Wifi_ReadRxPacket()))
         {
-            //send_binary(pkt->Data, pkt->Length);
-
             u8 dataoffset = pkt->Data[7];
             if (dataoffset >= pkt->Length)
             {
@@ -1248,9 +1279,68 @@ void Wifi_Update()
 
             switch (type)
             {
-            case WLC_E_ESCAN_RESULT:
+            case WLC_E_SET_SSID:
+                if (Joining)
                 {
-                    if (!Scanning) break;
+                    // for an open network, this event with status=0 would indicate a successful connection
+                    // however, for a secure network, it may be followed by a disconnect
+                    // so in that case we will rely on WLC_E_PSK_SUP instead
+                    if (status == 0)
+                    {
+                        if (JoinOpen)
+                        {
+                            if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
+                            JoinCB = NULL;
+                            Joining = 0;
+                        }
+                        break;
+                    }
+
+                    int stat;
+                    if (status == 3) // no networks
+                        stat = WIFI_JOIN_NOTFOUND;
+                    else
+                        stat = WIFI_JOIN_FAIL;
+
+                    if (JoinCB) JoinCB(stat);
+                    JoinCB = NULL;
+                    Joining = 0;
+                }
+                break;
+
+            case WLC_E_LINK:
+                LinkStatus = flags;
+                break;
+
+            case WLC_E_PRUNE:
+                if (Joining)
+                {
+                    if (JoinCB) JoinCB(WIFI_JOIN_BADSEC);
+                    JoinCB = NULL;
+                    Joining = 0;
+                }
+                break;
+
+            case WLC_E_PSK_SUP:
+                if (Joining && (!JoinOpen))
+                {
+                    int stat;
+                    if (status == 6) // unsolicited
+                        stat = WIFI_JOIN_SUCCESS;
+                    else if (status == 8) // partial
+                        stat = WIFI_JOIN_BADPASS;
+                    else
+                        stat = WIFI_JOIN_FAIL;
+
+                    if (JoinCB) JoinCB(stat);
+                    JoinCB = NULL;
+                    Joining = 0;
+                }
+                break;
+
+            case WLC_E_ESCAN_RESULT:
+                if (Scanning)
+                {
                     if (pkt->Length < 0x58) break;
 
                     u32 aplen = READ32LE(pktdata, 0x4C);

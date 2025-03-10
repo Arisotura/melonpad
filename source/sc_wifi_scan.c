@@ -193,6 +193,7 @@ static void ScanCallback(sScanInfo* list, int num)
 
 static void StartScan()
 {
+    LastScan = WUP_GetTicks();
     Scanning = 1;
 
     // clear the list
@@ -206,11 +207,16 @@ static void StartScan()
     Wifi_StartScan(ScanCallback);
 }
 
+static void JoinCallback(int status)
+{
+    printf("JOIN: STATUS=%d\n", status);
+}
+
 static void JoinNetwork(sScanInfo* info, const char* pass)
 {
     OpenConnectingPopup(info);
 
-    Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass);
+    Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass, JoinCallback);
 }
 
 void ScWifiScan_Update()
@@ -220,8 +226,6 @@ void ScWifiScan_Update()
         u32 time = WUP_GetTicks();
         if ((time - LastScan) > 10000)
         {
-            LastScan = time;
-
             // start a wifi scan
             StartScan();
         }
