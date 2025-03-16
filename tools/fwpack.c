@@ -10,6 +10,8 @@ int main(int argc, char** argv)
     int argsgood = 1;
     int hasver = 0;
     unsigned int version = 0x190C0117;
+    int hastitle = 0;
+    char title[256] = {0};
 
     if (argc < 3) argsgood = 0;
     else
@@ -33,12 +35,17 @@ int main(int argc, char** argv)
                 hasver = 1;
                 sscanf(argv[i], "VER_=%x", &version);
             }
+            else if ((!strncmp(argv[i], "TITL", 4)) && (strlen(argv[i]) <= 260))
+            {
+                hastitle = 1;
+                sscanf(argv[i], "TITL=%s", title);
+            }
         }
     }
 
     if (!argsgood)
     {
-        printf("usage: %s [VER_=version] AAAA=inputA [BBBB=inputB ...] output\n", argv[0]);
+        printf("usage: %s [VER_=version] [TITL=title] AAAA=inputA [BBBB=inputB ...] output\n", argv[0]);
         return 0;
     }
 
@@ -77,44 +84,66 @@ int main(int argc, char** argv)
         if (!strncmp(argv[i], "VER_", 4))
             continue;
 
-        char fname[512];
-        strncpy(fname, &argv[i][5], 511); fname[511] = '\0';
-        FILE* fin = fopen(fname, "rb");
-        if (!fin)
+        if (!strncmp(argv[i], "TITL", 4))
         {
-            printf("error: failed to open input file %s\n", fname);
-            fclose(fout);
-            remove(outfile);
-            return -1;
+            int inputsize = strlen(title);
+
+            unsigned int tag = argv[i][0] | (argv[i][1] << 8) | (argv[i][2] << 16) | (argv[i][3] << 24);
+
+            curhdr[0] = curhdr[-4] + curhdr[-3];
+            curhdr[1] = inputsize;
+            curhdr[2] = tag;
+            curhdr[3] = 0;
+
+            printf("writing %c%c%c%c at %08X: %d bytes\n",
+                   argv[i][0], argv[i][1], argv[i][2], argv[i][3],
+                   (unsigned int)ftell(fout), inputsize);
+
+            fwrite(title, inputsize, 1, fout);
+        }
+        else
+        {
+            char fname[512];
+            strncpy(fname, &argv[i][5], 511);
+            fname[511] = '\0';
+            FILE *fin = fopen(fname, "rb");
+            if (!fin)
+            {
+                printf("error: failed to open input file %s\n", fname);
+                fclose(fout);
+                remove(outfile);
+                return -1;
+            }
+
+            int inputsize;
+            fseek(fin, 0, SEEK_END);
+            inputsize = ftell(fin);
+            fseek(fin, 0, SEEK_SET);
+
+            unsigned int tag = argv[i][0] | (argv[i][1] << 8) | (argv[i][2] << 16) | (argv[i][3] << 24);
+
+            curhdr[0] = curhdr[-4] + curhdr[-3];
+            curhdr[1] = inputsize;
+            curhdr[2] = tag;
+            curhdr[3] = 0; // TODO: allow setting blob version
+
+            printf("writing %c%c%c%c at %08X: %d bytes\n",
+                   argv[i][0], argv[i][1], argv[i][2], argv[i][3],
+                   (unsigned int)ftell(fout), inputsize);
+
+            for (int j = 0; j < inputsize; j += chunksize)
+            {
+                int thischunk = chunksize;
+                if ((j + thischunk) > inputsize)
+                    thischunk = inputsize - j;
+
+                fread(tmpbuf, thischunk, 1, fin);
+                fwrite(tmpbuf, thischunk, 1, fout);
+            }
+
+            fclose(fin);
         }
 
-        int inputsize;
-        fseek(fin, 0, SEEK_END);
-        inputsize = ftell(fin);
-        fseek(fin, 0, SEEK_SET);
-
-        unsigned int tag = argv[i][0] | (argv[i][1] << 8) | (argv[i][2] << 16) | (argv[i][3] << 24);
-
-        curhdr[0] = curhdr[-4] + curhdr[-3];
-        curhdr[1] = inputsize;
-        curhdr[2] = tag;
-        curhdr[3] = 0; // TODO: allow setting blob version
-
-        printf("writing %c%c%c%c at %08X: %d bytes\n",
-               argv[i][0], argv[i][1], argv[i][2], argv[i][3],
-               (unsigned int)ftell(fout), inputsize);
-
-        for (int j = 0; j < inputsize; j += chunksize)
-        {
-            int thischunk = chunksize;
-            if ((j + thischunk) > inputsize)
-                thischunk = inputsize - j;
-
-            fread(tmpbuf, thischunk, 1, fin);
-            fwrite(tmpbuf, thischunk, 1, fout);
-        }
-
-        fclose(fin);
         curhdr += 4;
     }
 
