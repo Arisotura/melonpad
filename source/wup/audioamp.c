@@ -284,3 +284,55 @@ void AudioAmp_SetOutput(int output)
         AudioAmp_WriteReg(0x40, 0x02);
     }
 }
+
+
+void AudioAmp_SetMicVolume(int vol)
+{
+    // determine which mic input is in use
+    AudioAmp_SetPage(0x01);
+    u8 micinput = AudioAmp_ReadReg(0x30);
+    if (micinput != 0x20) return;
+
+    u8 volreg;
+    if (vol < -0xC00)
+        volreg = 0x68;      // minimum volume (-12dB)
+    else if (vol > 0x1400)
+        volreg = 0x28;      // maximum volume (20dB)
+    else
+        volreg = (vol >> 7) & 0x7F;
+
+    AudioAmp_SetPage(0x00);
+    AudioAmp_WriteReg(0x53, volreg);
+}
+
+void AudioAmp_SetMicPGA(int pga)
+{
+    u8 pgareg;
+    if (pga == 0x8000)
+        pgareg = 0x81;
+    else if (pga < 0)
+        pgareg = 0x00;      // minimum PGA (0dB)
+    else if (pga > 0x3B80)
+        pgareg = 0x77;      // maximum PGA (59.5dB)
+    else
+        pgareg = ((pga << 1) + 0x80) >> 8;
+
+    AudioAmp_SetPage(0x01);
+    u8 val = AudioAmp_ReadReg(0x2F);
+    val = (val & 0x80) | pgareg;
+    AudioAmp_WriteReg(0x2F, val);
+}
+
+void AudioAmp_SetMicUnk(int val)
+{
+    // writes page 1 register 51
+    // not documented :(
+
+    u8 reg;
+    if (val == 0) reg = 0xC0;
+    else if (val == 2) reg = 0x40;
+    else reg = 0;
+
+    AudioAmp_SetPage(0x01);
+    AudioAmp_WriteReg(0x33, reg);
+}

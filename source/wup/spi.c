@@ -1,7 +1,5 @@
 #include <wup/wup.h>
 
-// SPI TODO:
-// * add DMA transfers
 
 volatile u8 SPI_IRQStatus;
 void SPI_IRQHandler(int irq, void* userdata);
@@ -10,9 +8,9 @@ void SPI_IRQHandler(int irq, void* userdata);
 void SPI_Init()
 {
     // setup GPIO
-    *(vu32*)0xF00050EC = 0x8001;    // clock
+    /**(vu32*)0xF00050EC = 0x8001;    // clock
     *(vu32*)0xF00050F0 = 0x0001;    // MISO
-    *(vu32*)0xF00050F4 = 0x8001;    // MOSI
+    *(vu32*)0xF00050F4 = 0x8001;    // MOSI*/
     *(vu32*)0xF00050F8 = 0x8001;    // FLASH CS
     *(vu32*)0xF00050FC = 0x8001;    // UIC CS
 

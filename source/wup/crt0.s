@@ -4,7 +4,9 @@
 .section ".crt0","ax"
 
 .arm
-.align 4
+.align 2
+
+.type _init, %function
 
 .global _start
 _start:

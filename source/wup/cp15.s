@@ -7,6 +7,7 @@
 .align 4
 
 .global GetCP15Reg
+.type GetCP15Reg, %function
 GetCP15Reg:
     and r0, r0, #0xF
     and r1, r1, #0xF

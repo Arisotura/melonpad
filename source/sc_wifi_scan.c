@@ -97,6 +97,7 @@ static void OpenPasswordPopup(sScanInfo* info)
     lv_obj_set_flex_grow(textbox, 1);
     lv_obj_add_event_cb(textbox, OnPwCancel, LV_EVENT_CANCEL, info);
     lv_obj_add_event_cb(textbox, OnPwConnect, LV_EVENT_READY, info);
+    lv_textarea_set_text(textbox, "putain j'ai mal au cul"); // TEST - REMOVEME
 
     lv_obj_t* btn;
     btn = lv_msgbox_add_footer_button(msgbox, "Cancel");

@@ -1,19 +1,6 @@
 #include <wup/wup.h>
 
 
-static void fill32(u32 a, u32 b, u32 v)
-{
-    u32 i;
-    for (i = a; i <= b; i+=4) *(vu32*)i = v;
-}
-
-static void fill16(u32 a, u32 b, u32 v)
-{
-    u32 i;
-    for (i = a; i <= b; i+=4) *(vu16*)i = v;
-}
-
-
 typedef struct
 {
     fnIRQHandler handler;
@@ -22,7 +9,7 @@ typedef struct
 
 } sIRQHandlerEntry;
 
-sIRQHandlerEntry IRQTable[64];
+sIRQHandlerEntry IRQTable[40];
 
 
 volatile u8 Timer0Flag;
@@ -31,17 +18,17 @@ void Timer0IRQ(int irq, void* userdata);
 volatile u32 TickCount;
 void Timer1IRQ(int irq, void* userdata);
 
-void uictest();
+
 void WUP_Init()
 {
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < 40; i++)
     {
         IRQTable[i].handler = NULL;
         IRQTable[i].userdata = NULL;
         IRQTable[i].priority = 0;
     }
 
-    for (int i = 0; i < 0x20; i++)
+    for (int i = 0; i < 32; i++)
     {
         REG_IRQ_ENABLE(i) = 0x4F;
         REG_IRQ_TRIGGER(i) = 1;
@@ -51,38 +38,87 @@ void WUP_Init()
     REG_IRQ_ACK_KEY = 0;
     REG_IRQ_ACK = 0xF;
 
-    u32 sgdh = *(vu32*)0xF0000000; // TODO: blarg
+    int is41 = (WUP_HardwareType() == 0x41);
+    const u32 gpioFast    = is41 ? GPIO_SAM_SLEW_FAST : GPIO_REN_SLEW_FAST;
+    const u32 gpioFastAlt = gpioFast | GPIO_ALT_FUNCTION;
 
     // IRQ trigger type?
     // for example for IRQ 15/16 it needs to be 1 for them to fire repeatedly
-    fill16(0xF0001420, 0xF0001428, 1); // 00..02
-    fill16(0xF000142C, 0xF000143C, 5); // 03..07
-    fill16(0xF0001440, 0xF0001458, 1); // 08..0E
-    fill16(0xF000145C, 0xF0001470, 5); // 0F..14
-    fill16(0xF0001474, 0xF0001478, 1); // 15..16
-    fill16(0xF000147C, 0xF0001494, 5); // 17..1D
-    fill16(0xF0001498, 0xF000149C, 1); // 1E..1F
-    fill16(0xF0001520, 0xF000153C, 1); // 40..47??
+    const u8 irqtrig[40] = {
+        1, 1, 1,                // 00..02
+        5, 5, 5, 5, 5,          // 03..07
+        1, 1, 1, 1, 1, 1, 1,    // 08..0E
+        5, 5, 5, 5, 5, 5,       // 0F..14
+        1, 1,                   // 15..16
+        5, 5, 5, 5, 5, 5, 5,    // 17..1D
+        1, 1,                   // 1E..1F
+        1, 1, 1, 1, 1, 1, 1, 1  // 20..27
+    };
 
-    fill16(0xF0001208, 0xF0001284, 0x4A);
-    fill16(0xF0001288, 0xF00012A4, 0x60);
+    for (int i = 0; i < 40; i++)
+        REG_IRQ_TRIGGER(i) = irqtrig[i];
+    for (int i = 0; i < 32; i++)
+        REG_IRQ_ENABLE(i) = 0x4A;
+    for (int i = 32; i < 40; i++)
+        REG_IRQ_ENABLE(i) = 0x60; // ???
 
     // GPIO setup
-    *(vu32*)0xF000502C = 0;
-    fill32(0xF0005038, 0xF0005078, 0);
-    fill32(0xF0005080, 0xF0005094, 0);
-    *(vu32*)0xF0005098 = 0xC000;
-    *(vu32*)0xF000509C = 0;
-    *(vu32*)0xF00050A0 = 0;
-    fill32(0xF00050AC, 0xF00050F4, 0);
-    *(vu32*)0xF00050F8 = 0xC300;
-    *(vu32*)0xF00050FC = 0xC300;
-    *(vu32*)0xF0005100 = 0xC200;
-    *(vu32*)0xF0005104 = 0xC300;
-    *(vu32*)0xF0005108 = 0x8000;
-    *(vu32*)0xF000510C = 0xD800;
-    *(vu32*)0xF0005110 = 0xF200;
-    fill32(0xF0005114, 0xF000511C, 0x8000);
+    REG_GPIO_UNK2C = 0;
+    REG_GPIO_UNK38 = 0;
+    REG_GPIO_AUDIO_WCLK = 0;
+    REG_GPIO_AUDIO_BCLK = 0;
+    REG_GPIO_AUDIO_MIC = 0;
+    REG_GPIO_UNK48 = 0;
+    REG_GPIO_UNK4C = 0;
+    REG_GPIO_UNK50 = 0;
+    REG_GPIO_UNK54 = 0;
+    REG_GPIO_UNK58 = 0;
+    REG_GPIO_UNK5C = 0;
+    REG_GPIO_UNK60 = 0;
+    REG_GPIO_UNK64 = 0;
+    REG_GPIO_UNK68 = 0;
+    REG_GPIO_UNK6C = 0;
+    REG_GPIO_UNK70 = 0;
+    REG_GPIO_UNK74 = 0;
+    REG_GPIO_UNK78 = 0;
+    REG_GPIO_UNK80 = 0;
+    REG_GPIO_UNK84 = 0;
+    REG_GPIO_UNK88 = 0;
+    REG_GPIO_UNK8C = 0;
+    REG_GPIO_UNK90 = 0;
+    REG_GPIO_UNK94 = 0;
+    REG_GPIO_UNK98 = GPIO_SLEW_FAST_AND_UNK;
+    REG_GPIO_I2C_SCL = 0;
+    REG_GPIO_I2C_SDA = 0;
+    REG_GPIO_SDIO_CLOCK = 0;
+    REG_GPIO_SDIO_CMD = 0;
+    REG_GPIO_SDIO_DAT0 = 0;
+    REG_GPIO_SDIO_DAT1 = 0;
+    REG_GPIO_SDIO_DAT2 = 0;
+    REG_GPIO_SDIO_DAT3 = 0;
+    REG_GPIO_UNKC4 = 0;
+    REG_GPIO_UNKC8 = 0;
+    REG_GPIO_UNKCC = 0;
+    REG_GPIO_UNKD0 = 0;
+    REG_GPIO_UNKD4 = 0;
+    REG_GPIO_UNKD8 = 0;
+    REG_GPIO_UNKDC = 0;
+    REG_GPIO_UNKE0 = 0;
+    REG_GPIO_UNKE4 = 0;
+    REG_GPIO_UNKE8 = 0;
+    REG_GPIO_SPI_CLOCK = 0;
+    REG_GPIO_SPI_MISO = 0;
+    REG_GPIO_SPI_MOSI = 0;
+    REG_GPIO_SPI_CS0 = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_HIGH;
+    REG_GPIO_SPI_CS1 = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_HIGH;
+    REG_GPIO_LCD_RESET = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
+    REG_GPIO_SPI_CS2 = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_HIGH;
+    REG_GPIO_UNK108 = gpioFast;
+    REG_GPIO_UNK10C = GPIO_SLEW_FAST_AND_UNK | GPIO_INPUT_MODE | GPIO_UNK12;
+    REG_GPIO_UNK110 = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_MODE | GPIO_UNK12 | GPIO_UNK13;
+    REG_GPIO_RUMBLE = gpioFast;
+    REG_GPIO_SENSOR_BAR = gpioFast;
+    REG_GPIO_CAMERA = gpioFast;
 
     REG_CLK_UNK40    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
     REG_CLK_UNK44    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
@@ -105,26 +141,54 @@ void WUP_Init()
     REG_UNK30 |= 0x300;
 
     // more GPIO setup
-    *(vu32*)0xF00050EC = 0x8001;
-    *(vu32*)0xF00050F0 = 0x0001;
-    *(vu32*)0xF00050F4 = 0x8001;
-    *(vu32*)0xF0004400 = 0x8018;
-    fill32(0xF00050AC, 0xF00050C0, 0xC001);
-    *(vu32*)0xF00050D4 = 0x8001;
-    *(vu32*)0xF00050D8 = 0x0001;
-    *(vu32*)0xF000509C = 0x8001;
-    *(vu32*)0xF00050A0 = 0x8001;
-    *(vu32*)0xF000502C = 0x8000;
-    fill32(0xF000504C, 0xF0005070, 0x0001);
-    *(vu32*)0xF0005074 = 0x8001;
-    *(vu32*)0xF0005078 = 0x0001;
-    *(vu32*)0xF00050DC = 0x8001;
-    *(vu32*)0xF00050E0 = 0x8001;
-    *(vu32*)0xF00050E4 = 0x0001;
-    *(vu32*)0xF00050E8 = 0x0001;
-    *(vu32*)0xF0005048 = 0x8000;
-    *(vu32*)0xF0005038 = 0x8000;
-    fill32(0xF000503C, 0xF0005044, 0x0001);
+    REG_GPIO_SPI_CLOCK = gpioFastAlt;
+    REG_GPIO_SPI_MISO = GPIO_ALT_FUNCTION;
+    REG_GPIO_SPI_MOSI = gpioFastAlt;
+    REG_SPI_CLOCK = SPI_CLK_48MHZ;
+    if (is41)
+    {
+        REG_GPIO_SDIO_CLOCK = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK | GPIO_UNK16;
+        REG_GPIO_SDIO_CMD   = GPIO_ALT_FUNCTION | GPIO_SAM_UNK;
+        REG_GPIO_SDIO_DAT0  = GPIO_ALT_FUNCTION | GPIO_SAM_UNK;
+        REG_GPIO_SDIO_DAT1  = GPIO_ALT_FUNCTION | GPIO_SAM_UNK;
+        REG_GPIO_SDIO_DAT2  = GPIO_ALT_FUNCTION | GPIO_SAM_UNK;
+        REG_GPIO_SDIO_DAT3  = GPIO_ALT_FUNCTION | GPIO_SAM_UNK;
+    }
+    else
+    {
+        REG_GPIO_SDIO_CLOCK = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+        REG_GPIO_SDIO_CMD   = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+        REG_GPIO_SDIO_DAT0  = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+        REG_GPIO_SDIO_DAT1  = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+        REG_GPIO_SDIO_DAT2  = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+        REG_GPIO_SDIO_DAT3  = GPIO_ALT_FUNCTION | GPIO_SLEW_FAST_AND_UNK;
+    }
+    REG_GPIO_UNKD4 = gpioFastAlt;
+    REG_GPIO_UNKD8 = GPIO_ALT_FUNCTION;
+    REG_GPIO_I2C_SCL = gpioFastAlt;
+    REG_GPIO_I2C_SDA = gpioFastAlt;
+    REG_GPIO_UNK2C = gpioFast;
+    REG_GPIO_UNK4C = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK50 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK54 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK58 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK5C = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK60 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK64 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK68 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK6C = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK70 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK74 = gpioFastAlt;
+    REG_GPIO_UNK78 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNKDC = gpioFastAlt;
+    REG_GPIO_UNKE0 = gpioFastAlt;
+    REG_GPIO_UNKE4 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNKE8 = GPIO_ALT_FUNCTION;
+    REG_GPIO_UNK48 = gpioFast;
+    REG_GPIO_UNK38 = gpioFast;
+    REG_GPIO_AUDIO_WCLK = GPIO_ALT_FUNCTION;
+    REG_GPIO_AUDIO_BCLK = GPIO_ALT_FUNCTION;
+    REG_GPIO_AUDIO_MIC = GPIO_ALT_FUNCTION;
 
     // configure timer 1 with a 1ms interval
     REG_TIMER_CNT(1) = 0;
@@ -149,7 +213,6 @@ void WUP_Init()
 
     Flash_Init();
     UIC_Init();
-    //uictest(); // works
 
     GFX_Init();
     LCD_Init();
@@ -160,13 +223,15 @@ void WUP_Init()
     //SDIO_Init();
 
     Input_Init();
-    //uictest(); works also
+
+    // setup rumble GPIO (checkme)
+    REG_GPIO_RUMBLE = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
 }
 
 
 void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
 {
-    if (irq >= 64) return;
+    if (irq >= 40) return;
 
     int irqen = DisableIRQ();
 
@@ -184,7 +249,7 @@ void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
 
 void WUP_EnableIRQ(u8 irq)
 {
-    if (irq >= 64) return;
+    if (irq >= 40) return;
 
     int irqen = DisableIRQ();
 
@@ -196,7 +261,7 @@ void WUP_EnableIRQ(u8 irq)
 
 void WUP_DisableIRQ(u8 irq)
 {
-    if (irq >= 64) return;
+    if (irq >= 40) return;
 
     int irqen = DisableIRQ();
 
@@ -210,7 +275,7 @@ void IRQHandler()
     u32 irqnum = REG_IRQ_CURRENT;
     u32 ack = REG_IRQ_ACK_KEY;
 
-    if (irqnum < 64)
+    if (irqnum < 40)
     {
         sIRQHandlerEntry* entry = &IRQTable[irqnum];
         if (entry->handler)

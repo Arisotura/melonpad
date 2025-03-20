@@ -5,6 +5,7 @@
 #define LCD_ID_PANASONIC    0x00000002
 
 void LCD_Init();
+void LCD_DeInit();
 void LCD_SetBrightness(int brightness);
 
 #endif // LCD_H_

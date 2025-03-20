@@ -4,9 +4,10 @@
 .text
 
 .arm
-.align 4
+.align 2
 
 .global EnableIRQ
+.type EnableIRQ, %function
 EnableIRQ:
 	mrs r0, cpsr
 	bic r0, r0, #0x80
@@ -14,6 +15,7 @@ EnableIRQ:
 	bx lr
 
 .global DisableIRQ
+.type DisableIRQ, %function
 DisableIRQ:
 	mrs r1, cpsr
 	mov r0, r1, lsr #7
@@ -23,6 +25,7 @@ DisableIRQ:
 	bx lr
 
 .global RestoreIRQ
+.type RestoreIRQ, %function
 RestoreIRQ:
     and r0, r0, #1
     mrs r1, cpsr
@@ -32,12 +35,14 @@ RestoreIRQ:
 	bx lr
 
 .global WaitForIRQ
+.type WaitForIRQ, %function
 WaitForIRQ:
     mov r0, #0
     mcr p15, 0, r0, c7, c0, 4
     bx lr
 
 .global IsInIRQ
+.type IsInIRQ, %function
 IsInIRQ:
     mrs r0, cpsr
     and r0, r0, #0x1F
@@ -48,6 +53,7 @@ IsInIRQ:
 
 
 .global DC_FlushRange
+.type DC_FlushRange, %function
 DC_FlushRange:
     mov r2, #0
     mcr p15, 0, r2, c7, c10, 4
@@ -63,6 +69,7 @@ _dcflushrange_loop:
     bx lr
 
 .global DC_FlushAll
+.type DC_FlushAll, %function
 DC_FlushAll:
     mov	r1, #0
 _dcflushall_outer_loop:
@@ -81,6 +88,7 @@ _dcflushall_inner_loop:
     bx lr
 
 .global DC_InvalidateRange
+.type DC_InvalidateRange, %function
 DC_InvalidateRange:
     add r1, r0, r1
     bic r0, r0, #31
@@ -92,12 +100,14 @@ _dcinvalidaterange_loop:
     bx lr
 
 .global DC_InvalidateAll
+.type DC_InvalidateAll, %function
 DC_InvalidateAll:
     mov r0, #0
     mcr p15, 0, r0, c7, c6, 0
     bx lr
 
 .global IC_InvalidateRange
+.type IC_InvalidateRange, %function
 IC_InvalidateRange:
     add r1, r0, r1
     bic r0, r0, #31
@@ -109,12 +119,14 @@ _icinvalidaterange_loop:
     bx lr
 
 .global IC_InvalidateAll
+.type IC_InvalidateAll, %function
 IC_InvalidateAll:
     mov r0, #0
     mcr p15, 0, r0, c7, c5, 0
     bx lr
 
 .global DisableMMU
+.type DisableMMU, %function
 DisableMMU:
     mrc p15, 0, r0, c1, c0, 0
     bic r0, r0, #0xD
@@ -123,6 +135,7 @@ DisableMMU:
     bx lr
 
 .global CallLoader
+.type CallLoader, %function
 CallLoader:
     mov r12, #0x20
     ldr r12, [r12]

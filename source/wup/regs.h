@@ -30,7 +30,7 @@
 #define REG_HARDWARE_RESET      *(vu32*)0xF0000058
 #define REG_UNK64               *(vu32*)0xF0000064
 
-#define PLL_DIV_2               0x001
+#define PLL_DIV_2               0x005
 #define PLL_DIV_2_5             0x101
 #define PLL_DIV_N(n)            ((n) & 0x1FE)
 
@@ -203,6 +203,97 @@
 // REG_SPI_DEVICE_SEL settings
 #define SPI_DEVICE_FLASH        (1<<0)
 #define SPI_DEVICE_UIC          (1<<1)
+
+
+// --- GPIO -------------------------------------------------------------------
+
+#define REG_GPIO_UNK2C          *(vu32*)0xF000502C
+#define REG_GPIO_UNK38          *(vu32*)0xF0005038
+#define REG_GPIO_AUDIO_WCLK     *(vu32*)0xF000503C
+#define REG_GPIO_AUDIO_BCLK     *(vu32*)0xF0005040
+#define REG_GPIO_AUDIO_MIC      *(vu32*)0xF0005044
+#define REG_GPIO_UNK48          *(vu32*)0xF0005048
+#define REG_GPIO_UNK4C          *(vu32*)0xF000504C
+#define REG_GPIO_UNK50          *(vu32*)0xF0005050
+#define REG_GPIO_UNK54          *(vu32*)0xF0005054
+#define REG_GPIO_UNK58          *(vu32*)0xF0005058
+#define REG_GPIO_UNK5C          *(vu32*)0xF000505C
+#define REG_GPIO_UNK60          *(vu32*)0xF0005060
+#define REG_GPIO_UNK64          *(vu32*)0xF0005064
+#define REG_GPIO_UNK68          *(vu32*)0xF0005068
+#define REG_GPIO_UNK6C          *(vu32*)0xF000506C
+#define REG_GPIO_UNK70          *(vu32*)0xF0005070
+#define REG_GPIO_UNK74          *(vu32*)0xF0005074
+#define REG_GPIO_UNK78          *(vu32*)0xF0005078
+#define REG_GPIO_UNK80          *(vu32*)0xF0005080
+#define REG_GPIO_UNK84          *(vu32*)0xF0005084
+#define REG_GPIO_UNK88          *(vu32*)0xF0005088
+#define REG_GPIO_UNK8C          *(vu32*)0xF000508C
+#define REG_GPIO_UNK90          *(vu32*)0xF0005090
+#define REG_GPIO_UNK94          *(vu32*)0xF0005094
+#define REG_GPIO_UNK98          *(vu32*)0xF0005098
+#define REG_GPIO_I2C_SCL        *(vu32*)0xF000509C
+#define REG_GPIO_I2C_SDA        *(vu32*)0xF00050A0
+#define REG_GPIO_SDIO_CLOCK     *(vu32*)0xF00050AC
+#define REG_GPIO_SDIO_CMD       *(vu32*)0xF00050B0
+#define REG_GPIO_SDIO_DAT0      *(vu32*)0xF00050B4
+#define REG_GPIO_SDIO_DAT1      *(vu32*)0xF00050B8
+#define REG_GPIO_SDIO_DAT2      *(vu32*)0xF00050BC
+#define REG_GPIO_SDIO_DAT3      *(vu32*)0xF00050C0
+#define REG_GPIO_UNKC4          *(vu32*)0xF00050C4
+#define REG_GPIO_UNKC8          *(vu32*)0xF00050C8
+#define REG_GPIO_UNKCC          *(vu32*)0xF00050CC
+#define REG_GPIO_UNKD0          *(vu32*)0xF00050D0
+#define REG_GPIO_UNKD4          *(vu32*)0xF00050D4
+#define REG_GPIO_UNKD8          *(vu32*)0xF00050D8
+#define REG_GPIO_UNKDC          *(vu32*)0xF00050DC
+#define REG_GPIO_UNKE0          *(vu32*)0xF00050E0
+#define REG_GPIO_UNKE4          *(vu32*)0xF00050E4
+#define REG_GPIO_UNKE8          *(vu32*)0xF00050E8
+#define REG_GPIO_SPI_CLOCK      *(vu32*)0xF00050EC
+#define REG_GPIO_SPI_MISO       *(vu32*)0xF00050F0
+#define REG_GPIO_SPI_MOSI       *(vu32*)0xF00050F4
+#define REG_GPIO_SPI_CS0        *(vu32*)0xF00050F8 // FLASH
+#define REG_GPIO_SPI_CS1        *(vu32*)0xF00050FC // UIC
+#define REG_GPIO_LCD_RESET      *(vu32*)0xF0005100
+#define REG_GPIO_SPI_CS2        *(vu32*)0xF0005104 // NFC
+#define REG_GPIO_UNK108         *(vu32*)0xF0005108 // used in bootloader
+#define REG_GPIO_UNK10C         *(vu32*)0xF000510C // NFC related
+#define REG_GPIO_UNK110         *(vu32*)0xF0005110 // NFC related
+#define REG_GPIO_RUMBLE         *(vu32*)0xF0005114
+#define REG_GPIO_SENSOR_BAR     *(vu32*)0xF0005118
+#define REG_GPIO_CAMERA         *(vu32*)0xF000511C
+
+// REG_GPIO_xxxx defines
+// not all registers seem to have all these bits
+#define GPIO_ALT_FUNCTION       (1<<0)
+#define GPIO_OUTPUT_MODE        (1<<9)
+#define GPIO_INPUT_MODE         (1<<11)
+
+#define GPIO_OUTPUT_LOW         (GPIO_OUTPUT_MODE | (0<<8))
+#define GPIO_OUTPUT_HIGH        (GPIO_OUTPUT_MODE | (1<<8))
+
+#define GPIO_GET_INPUT_VAL(reg)     (((reg) >> 10) & 1)
+#define GPIO_SET_OUTPUT_LOW(reg)    ((reg) &= ~(1<<8))
+#define GPIO_SET_OUTPUT_HIGH(reg)   ((reg) |= (1<<8))
+#define GPIO_TOGGLE_OUTPUT(reg)     ((reg) ^= (1<<8))
+#define GPIO_SET_OUTPUT_VAL(reg, x) \
+    do { if (x) GPIO_SET_OUTPUT_HIGH(reg); else GPIO_SET_OUTPUT_LOW(reg); } while(0)
+
+// firmware tries to set these bits, but they don't seem to actually exist
+// (no idea about bit16)
+#define GPIO_UNK12              (1<<12)
+#define GPIO_UNK13              (1<<13)
+#define GPIO_UNK16              (1<<16)
+
+// these bits are different for the Samsung SoC (REG_HARDWARE_ID LSB == 0x41)
+#define GPIO_REN_UNK            (1<<14)
+#define GPIO_REN_SLEW_FAST      (1<<15)
+
+#define GPIO_SAM_SLEW_FAST      (1<<14)
+#define GPIO_SAM_UNK            (1<<15)
+
+#define GPIO_SLEW_FAST_AND_UNK  ((1<<14)|(1<<15))
 
 
 // --- SDIO -------------------------------------------------------------------

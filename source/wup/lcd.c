@@ -28,7 +28,7 @@ void LCD_Init()
     }
 
     I2C_Start(I2C_BUS_LCD);
-    *(vu32*)0xF0005100 = 0xC200;
+    REG_GPIO_LCD_RESET = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
 
     int good = 0;
     for (int i = 0; i < 100; i++)
@@ -53,6 +53,13 @@ void LCD_Init()
     LCD_SetBrightness(BrightnessData[12]);
 }
 
+void LCD_DeInit()
+{
+    LCD_SetBrightness(-1);
+
+    GPIO_SET_OUTPUT_LOW(REG_GPIO_LCD_RESET);
+}
+
 void LCD_SetBrightness(int brightness)
 {
     if (brightness < -1) brightness = -1;
@@ -61,9 +68,9 @@ void LCD_SetBrightness(int brightness)
     I2C_Start(I2C_BUS_LCD);
 
     // toggle LCD GPIO
-    *(vu32*)0xF0005100 &= ~0x0100;
+    GPIO_SET_OUTPUT_LOW(REG_GPIO_LCD_RESET);
     WUP_DelayMS(5);
-    *(vu32*)0xF0005100 |= 0x0100;
+    GPIO_SET_OUTPUT_HIGH(REG_GPIO_LCD_RESET);
     WUP_DelayMS(15);
 
     _LCD_SetBrightness(brightness);
@@ -72,39 +79,12 @@ void LCD_SetBrightness(int brightness)
     UIC_SetBacklight(brightness >= 0);
 }
 
-void LCD_test(int derp)
-{
-    I2C_Start(I2C_BUS_LCD);
-
-    //LCD_TryGetID();
-    // I2C LCD init
-    u8 buf[16];
-
-    buf[0] = 0xB0; buf[1] = 0x02;
-    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0)) return;
-
-    buf[0] = 0xBF;
-    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 1, 1)) return;
-    *(vu32*)0xF0000058 |= (1<<derp);
-    *(vu32*)0xF0000058 &= ~(1<<derp);
-    if (!I2C_Read(I2C_BUS_LCD, I2C_DEV_LCD, buf, 5)) return;
-
-    u32 lcdid = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
-
-    buf[0] = 0xB0; buf[1] = 0x03;
-    if (!I2C_Write(I2C_BUS_LCD, I2C_DEV_LCD, buf, 2, 0)) return;
-    printf("LCD = %08X\n", lcdid);
-
-    I2C_Finish(I2C_BUS_LCD);
-}
-
-
 int LCD_TryGetID()
 {
     // toggle LCD GPIO
-    *(vu32*)0xF0005100 &= ~0x0100;
+    GPIO_SET_OUTPUT_LOW(REG_GPIO_LCD_RESET);
     WUP_DelayMS(5);
-    *(vu32*)0xF0005100 |= 0x0100;
+    GPIO_SET_OUTPUT_HIGH(REG_GPIO_LCD_RESET);
     WUP_DelayMS(15);
 
     // I2C LCD init

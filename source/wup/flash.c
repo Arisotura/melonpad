@@ -8,19 +8,39 @@ static int PartNumEntries;
 static u32* PartHeader;
 
 
+static u32 chkcode(u32 addr)
+{
+    addr &= 0x01FFFFFF;
+    u32 code = addr & 0x7F;
+    code ^= ((addr >> 7) & 0x7F);
+    code ^= ((addr >> 14) & 0x7F);
+    code ^= ((addr >> 21) & 0x7F);
+    code ^= (addr >> 28);
+    return (code << 25) | addr;
+}
+
 int Flash_Init()
 {
     // TODO: check cmd 9F?
 
     Flash_Set4ByteAddr(1);
 
-    // load partition data
-    u8 partsel = 0;
-    Flash_Read(0xF000, &partsel, 1);
-    if (partsel == 1)
-        PartBase = 0x500000;
+    u32 myaddr = *(vu32*)0x3FFFF8;
+    if (myaddr != 0 && myaddr != 0xFFFFFFFF && myaddr == chkcode(myaddr))
+    {
+        PartBase = myaddr & 0x1FFFFFF;
+    }
     else
-        PartBase = 0x100000;
+    {
+        u8 partsel = 0;
+        Flash_Read(0xF000, &partsel, 1);
+        if (partsel == 1)
+            PartBase = 0x500000;
+        else
+            PartBase = 0x100000;
+    }
+
+    // load partition data
 
     u32 tbllen = 0;
     Flash_Read(PartBase+4, (u8*)&tbllen, 4);

@@ -24,6 +24,9 @@ else
     SILENTCMD := @
 endif
 
+APPTITLE := melonpad
+APPVERSION := 01000000
+
 #---------------------------------------------------------------------------------
 %.a:
 #---------------------------------------------------------------------------------
@@ -72,12 +75,12 @@ SOURCEDIRS	:= ${shell find source -type d -print}
 TARGET		:=	$(shell basename $(CURDIR))
 BUILD		:=	build
 SOURCES		:=	$(SOURCEDIRS) data
-INCLUDES	:=	source build
+INCLUDES	:=	source source/lwip/src/include build
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-marm
+ARCH	:=	-mthumb -mthumb-interwork
 
 CFLAGS	:=	-g -Wall -O2\
  			-march=armv5te -mtune=arm926ej-s -fomit-frame-pointer\
@@ -180,7 +183,6 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.elf:
 	$(SILENTMSG) linking $(notdir $@)
-	#$(ADD_COMPILE_COMMAND) end
 	$(SILENTCMD)$(LD)  $(LDFLAGS) $(OFILES) $(LIBPATHS) $(LIBS) -o $@
 
 #---------------------------------------------------------------------------------
@@ -191,9 +193,7 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.fw : %.bin
 	$(SILENTMSG) packing $(notdir $@)
-	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
-	$(SILENTCMD)$(FWPACK) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
-	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware3.bin WNVR=../wlnvram.bin $@
+	$(SILENTCMD)$(FWPACK) VER_=$(APPVERSION) TITL=$(APPTITLE) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
 
 -include $(DEPENDS)
 
