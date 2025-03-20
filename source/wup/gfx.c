@@ -29,22 +29,22 @@ void GFX_Init()
 
     if (WUP_HardwareType() == 0x41)
     {
-        *(vu32*)0xF0009700 = (*(vu32*)0xF0009700 & ~0x7FFFFF) | 0x94921;
-        *(vu32*)0xF0009708 |= 1;
+        REG_UNK9700 = (REG_UNK9700 & ~0x7FFFFF) | 0x94921;
+        REG_UNK9708 |= 1;
 
         WUP_DelayMS(1);
     }
     else
     {
-        *(vu32*)0xF0009700 = (*(vu32*)0xF0009700 & ~0x3FFFFFF) | 0x6C9242;
-        *(vu32*)0xF0009704 |= 0x63;
-        *(vu32*)0xF0009708 = (*(vu32*)0xF0009708 & ~0xF) | 5;
+        REG_UNK9700 = (REG_UNK9700 & ~0x3FFFFFF) | 0x6C9242;
+        REG_UNK9704 |= 0x63;
+        REG_UNK9708 = (REG_UNK9708 & ~0xF) | 5;
 
         WUP_DelayMS(1);
 
-        *(vu32*)0xF0009708 |= 2;
-        while (*(vu32*)0xF000970C & 1);
-        *(vu32*)0xF0009708 |= 8;
+        REG_UNK9708 |= 2;
+        while (REG_UNK970C & 1);
+        REG_UNK9708 |= 8;
     }
 
     *(vu32*)0xF0009480 = (*(vu32*)0xF0009480 & ~0x1F) | 2;
@@ -53,38 +53,37 @@ void GFX_Init()
 
     //
 
-    *(vu32*)0xF0009474 = (u32)Framebuffer;
-    *(vu32*)0xF0009460 = 0x60;
-    *(vu32*)0xF0009468 = 0x8;
-    *(vu32*)0xF0009464 = 854;
-    *(vu32*)0xF000946C = 480;
-    //*(vu32*)0xF0009470 = 856;
-    //*(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 0;
-    *(vu32*)0xF0009470 = 854;
-    *(vu32*)0xF00094B0 = (*(vu32*)0xF00094B0 & ~0x7) | 3;
-    *(vu32*)0xF00094B4 &= ~0xFFFF;
+    REG_LCD_FB_MEMADDR = (u32)Framebuffer;
+    REG_LCD_FB_XOFFSET = 96;
+    REG_LCD_FB_YOFFSET = 8;
+    REG_LCD_FB_WIDTH = 854;
+    REG_LCD_FB_HEIGHT = 480;
+    //REG_LCD_FB_STRIDE = 856;
+    //REG_LCD_PIXEL_FMT = (REG_LCD_PIXEL_FMT & ~0x7) | 0;
+    REG_LCD_FB_STRIDE = 854;
+    REG_LCD_PIXEL_FMT = (REG_LCD_PIXEL_FMT & ~0x7) | 3;
+    REG_LCD_UNKB4 &= ~0xFFFF;
 
-    *(vu32*)0xF0009480 = (*(vu32*)0xF0009480 & 0x14) | 2;
-    *(vu32*)0xF0009418 = 950; // total horizontal span
-    *(vu32*)0xF0009410 = 96;
-    *(vu32*)0xF0009400 = 0x03B00417; // 944-1047
-    *(vu32*)0xF0009408 = 32;
-    *(vu32*)0xF000941C = 488; // total vertical span
-    *(vu32*)0xF0009414 = 8;
-    *(vu32*)0xF0009420 = 96;
-    *(vu32*)0xF0009424 = 854;
-    *(vu32*)0xF0009428 = 8;
-    *(vu32*)0xF0009404 = 0x01B201FE; // 434-510
-    *(vu32*)0xF000940C = 8;
+    REG_LCD_DISP_CNT = (REG_LCD_DISP_CNT & 0x14) | DISP_ENABLE_OVERLAY;
+    REG_LCD_HEND = 950;
+    REG_LCD_HSTART = 96;
+    REG_LCD_HTIMING = (944 << 16) | 1047;
+    REG_LCD_UNK08 = 32;
+    REG_LCD_VEND = 488;
+    REG_LCD_VSTART = 8;
+    REG_LCD_UNK20 = 96;
+    REG_LCD_UNK24 = 854;
+    REG_LCD_UNK28 = 8;
+    REG_LCD_VTIMING = (434 << 16) | 510;
+    REG_LCD_UNK0C = 8;
 
-    *(vu32*)0xF0009508 = 8;
-    *(vu32*)0xF000950C = 0xB2;
-    *(vu32*)0xF0009510 = 0x15C;
-    *(vu32*)0xF0009514 = 0x7FF;
+    REG_UNK9508 = 8;
+    REG_UNK950C = 0xB2;
+    REG_UNK9510 = 0x15C;
+    REG_UNK9514 = 0x7FF;
 
-    // important!!
-    // needs to have bit1 and bit4 set for display to work
-    *(vu32*)0xF0009480 |= 0x10;
+    // enable display
+    REG_LCD_DISP_CNT |= DISP_ENABLE;
 
     VBlankFlag = 0;
     WUP_SetIRQHandler(IRQ_VBLANK, GFX_VBlank, NULL, 0);

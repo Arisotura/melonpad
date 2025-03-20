@@ -51,6 +51,7 @@
 #define RESET_SDIO              (1<<6)
 #define RESET_UART              (1<<8)
 #define RESET_I2C               (1<<13)
+#define RESET_AUDIO             (1<<15)
 
 
 // --- IRQ --------------------------------------------------------------------
@@ -76,6 +77,8 @@
 #define IRQ_I2C                 0x0F
 #define IRQ_VBLANK_END          0x15
 #define IRQ_VBLANK              0x16
+#define IRQ_AUDIO               0x17
+#define IRQ_MIC                 0x18
 
 
 // --- Timers -----------------------------------------------------------------
@@ -294,6 +297,142 @@
 #define GPIO_SAM_UNK            (1<<15)
 
 #define GPIO_SLEW_FAST_AND_UNK  ((1<<14)|(1<<15))
+
+
+// --- Audio ------------------------------------------------------------------
+
+#define REG_AUDIO_CNT           *(vu32*)0xF0005400
+#define REG_AUDIO_UNK04         *(vu32*)0xF0005404
+#define REG_AUDIO_BUF_START     *(vu32*)0xF0005408
+#define REG_AUDIO_BUF_END       *(vu32*)0xF000540C
+#define REG_AUDIO_PLAY_END      *(vu32*)0xF0005410
+#define REG_AUDIO_PLAY_POS      *(vu32*)0xF0005414
+#define REG_AUDIO_UNK18         *(vu32*)0xF0005418
+#define REG_AUDIO_UNK1C         *(vu32*)0xF000541C
+#define REG_AUDIO_PLAY_CNT      *(vu32*)0xF0005420
+#define REG_AUDIO_ALERT_COUNT   *(vu32*)0xF0005424
+#define REG_AUDIO_PLAY_COUNT    *(vu32*)0xF0005428
+#define REG_AUDIO_IRQ_ENABLE    *(vu32*)0xF000542C
+#define REG_AUDIO_IRQ_STATUS    *(vu32*)0xF0005430
+#define REG_AUDIO_UNK34         *(vu32*)0xF0005434
+#define REG_AUDIO_SAMP_CNT      *(vu32*)0xF00054B8
+
+// REG_AUDIO_CNT settings
+#define AUDIO_ENABLE            (1<<0)
+#define AUDIO_CHAN_LR           (0<<5)
+#define AUDIO_CHAN_RL           (1<<5)
+#define AUDIO_I2S_OFFSET(x)     (((x)&0x1F)<<6)
+#define AUDIO_I2S_WIDTH(x)      (((x)&0x1F)<<11)
+#define AUDIO_UNK19             (1<<19)
+#define AUDIO_RATE_HALF         (1<<22) // halve incoming sample rate
+#define AUDIO_FMT_PCM16         (0<<23)
+#define AUDIO_FMT_PCM8          (1<<23)
+#define AUDIO_PCM8_MULAW        (0<<24)
+#define AUDIO_PCM8_ALAW         (1<<24)
+
+// REG_AUDIO_PLAY_CNT settings
+#define PLAYCNT_MUTE            (1<<0)
+#define PLAYCNT_MUTE2           (1<<1)
+#define PLAYCNT_STOP            (1<<2)
+
+// Audio IRQ bits
+#define AUDIO_IRQ_MUTE          (1<<0)
+#define AUDIO_IRQ_MUTE2         (1<<1)
+#define AUDIO_IRQ_STOP          (1<<2)
+#define AUDIO_IRQ_ALERT         (1<<3)
+#define AUDIO_IRQ_UNMUTE        (1<<4)
+#define AUDIO_IRQ_UNMUTE2       (1<<5)
+
+
+#define REG_MIC_CNT             *(vu32*)0xF0005444
+#define REG_MIC_ALERT_COUNT     *(vu32*)0xF0005448
+#define REG_MIC_BUF_START       *(vu32*)0xF00054A0
+#define REG_MIC_BUF_END         *(vu32*)0xF00054A4
+#define REG_MIC_REC_END         *(vu32*)0xF00054A8
+#define REG_MIC_REC_COUNT_1     *(vu32*)0xF00054AC
+#define REG_MIC_REC_COUNT_2     *(vu32*)0xF00054B0
+#define REG_MIC_IRQ_STATUS      *(vu32*)0xF00054C0
+#define REG_MIC_IRQ_DISABLE     *(vu32*)0xF00054C4
+#define REG_MIC_IRQ_ACK         *(vu32*)0xF00054C8
+
+// REG_MIC_CNT settings
+#define MIC_ENABLE              (1<<0)
+#define MIC_UNK3                (1<<3)
+#define MIC_RATE_HALF           (1<<12) // halve incoming sample rate
+#define MIC_FMT_PCM16           (0<<13)
+#define MIC_FMT_PCM8            (1<<13)
+#define MIC_PCM8_MULAW          (0<<14)
+#define MIC_PCM8_ALAW           (1<<14)
+#define MIC_UNK15               (1<<15)
+#define MIC_I2S_OFFSET(x)       (((x)&0x1F)<<16)
+#define MIC_UNK30               (1<<30)
+#define MIC_RESET               (1<<31)
+
+// Mic IRQ bits
+#define MIC_IRQ_ALERT           (1<<0)
+#define MIC_IRQ_UNK4            (1<<4)
+#define MIC_IRQ_UNK8            (1<<8)
+
+
+// --- Video ------------------------------------------------------------------
+
+#define REG_LCD_HTIMING         *(vu32*)0xF0009400
+#define REG_LCD_VTIMING         *(vu32*)0xF0009404
+#define REG_LCD_UNK08           *(vu32*)0xF0009408
+#define REG_LCD_UNK0C           *(vu32*)0xF000940C
+#define REG_LCD_HSTART          *(vu32*)0xF0009410
+#define REG_LCD_VSTART          *(vu32*)0xF0009414
+#define REG_LCD_HEND            *(vu32*)0xF0009418
+#define REG_LCD_VEND            *(vu32*)0xF000941C
+#define REG_LCD_UNK20           *(vu32*)0xF0009420
+#define REG_LCD_UNK24           *(vu32*)0xF0009424
+#define REG_LCD_UNK28           *(vu32*)0xF0009428
+#define REG_LCD_FB_XOFFSET      *(vu32*)0xF0009460
+#define REG_LCD_FB_WIDTH        *(vu32*)0xF0009464
+#define REG_LCD_FB_YOFFSET      *(vu32*)0xF0009468
+#define REG_LCD_FB_HEIGHT       *(vu32*)0xF000946C
+#define REG_LCD_FB_STRIDE       *(vu32*)0xF0009470
+#define REG_LCD_FB_MEMADDR      *(vu32*)0xF0009474
+#define REG_LCD_DISP_CNT        *(vu32*)0xF0009480
+#define REG_LCD_PIXEL_FMT       *(vu32*)0xF00094B0
+#define REG_LCD_UNKB4           *(vu32*)0xF00094B4
+
+// REG_LCD_DISP_CNT settings
+#define DISP_UNK0               (1<<0)
+#define DISP_ENABLE_OVERLAY     (1<<1) // enable overlay (framebuffer)
+#define DISP_UNK2               (1<<2)
+#define DISP_UNK3               (1<<3)
+#define DISP_ENABLE             (1<<4) // enable display
+
+// REG_LCD_PIXEL_FMT settings
+#define PIXEL_FMT_PAL_256       (0<<0) // 8bpp paletted
+#define PIXEL_FMT_PAL_16        (1<<0) // 4bpp paletted
+#define PIXEL_FMT_ARGB1555      (2<<0) // 16bit
+#define PIXEL_FMT_RGB565        (3<<0) // 16bit
+
+
+#define REG_PALETTE_ADDR        *(vu32*)0xF0009500
+#define REG_PALETTE_DATA        *(vu32*)0xF0009504
+#define REG_UNK9508             *(vu32*)0xF0009508
+#define REG_UNK950C             *(vu32*)0xF000950C
+#define REG_UNK9510             *(vu32*)0xF0009510
+#define REG_UNK9514             *(vu32*)0xF0009514
+
+
+#define REG_GAMMA_LUT(i)        *(vu32*)(0xF0009600 + ((i)<<2))
+#define REG_GAMMA_MASK          *(vu32*)0xF0009684
+
+// REG_GAMMA_MASK settings
+#define GAMMA_ENABLE_RED        (1<<0)
+#define GAMMA_ENABLE_BLUE       (1<<1)
+#define GAMMA_ENABLE_GREEN      (1<<2)
+#define GAMMA_ENABLE_ALL        (7<<0)
+
+
+#define REG_UNK9700             *(vu32*)0xF0009700
+#define REG_UNK9704             *(vu32*)0xF0009704
+#define REG_UNK9708             *(vu32*)0xF0009708
+#define REG_UNK970C             *(vu32*)0xF000970C
 
 
 // --- SDIO -------------------------------------------------------------------
