@@ -10,8 +10,10 @@
 
 typedef void (*fnSampleCb)();
 typedef void (*fnStreamCb)(void* buffer, int length);
+typedef void (*fnRecordCb)(void* buffer, int length);
 
 int Audio_Init();
+void Audio_DeInit();
 
 void Audio_SetVolume(u8 vol);
 void Audio_SetMute(int mute);
@@ -25,6 +27,8 @@ int Audio_PlaySample(void* buffer, int length, int format, int freq, int chans, 
 int Audio_StartStream(void* buffer, int length, int format, int freq, int chans, fnStreamCb callback);
 void Audio_Stop();
 
-//
+int Mic_RecordSample(void* buffer, int length, int format, int freq, fnRecordCb callback);
+int Mic_StartRecord(void* buffer, int length, int format, int freq, fnRecordCb callback);
+void Mic_Stop();
 
 #endif // _AUDIO_H_

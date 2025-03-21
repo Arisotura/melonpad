@@ -13,63 +13,13 @@ static fnStreamCb StreamCB;
 static u32 StreamLength;
 static u32 StreamWritePos;
 
+static volatile u8 Recording;
+static fnRecordCb RecordCB;
+static u32 RecordLength;
+static u32 RecordReadPos;
 
-static void AudioIRQ(int irq, void* userdata)
-{
-    u32 irqreg = REG_AUDIO_IRQ_STATUS;
-
-    if (irqreg & AUDIO_IRQ_ALERT)
-    {
-        REG_AUDIO_IRQ_STATUS = AUDIO_IRQ_ALERT;
-
-        if (Playing == 1)
-        {
-            // finished playing sample
-            Playing = 0;
-
-            REG_AUDIO_IRQ_ENABLE &= ~(AUDIO_IRQ_ALERT | AUDIO_IRQ_STOP);
-            REG_AUDIO_PLAY_CNT |= PLAYCNT_MUTE;
-
-            if (SampleCB)
-                SampleCB();
-        }
-        else if (Playing == 2)
-        {
-            // stream alert
-
-            // update the half of the buffer which isn't being played
-            u32 bufpos = REG_AUDIO_BUF_START + StreamWritePos;
-            int buflen = StreamLength >> 1;
-
-            if (StreamCB)
-                StreamCB((void*)bufpos, buflen);
-
-            StreamWritePos += buflen;
-            if (StreamWritePos >= StreamLength)
-                StreamWritePos -= StreamLength;
-
-            // update the alert count for the next IRQ
-            REG_AUDIO_ALERT_COUNT -= (buflen >> 3);
-        }
-    }
-
-    if (irqreg & AUDIO_IRQ_STOP)
-    {
-        REG_AUDIO_IRQ_STATUS = AUDIO_IRQ_STOP;
-
-        if (Playing)
-        {
-            Playing = 0;
-            SampleCB = NULL;
-            StreamCB = NULL;
-        }
-    }
-}
-
-static void MicIRQ(int irq, void* userdata)
-{
-    //
-}
+static void AudioIRQ(int irq, void* userdata);
+static void MicIRQ(int irq, void* userdata);
 
 
 int Audio_Init()
@@ -127,6 +77,11 @@ int Audio_Init()
     StreamLength = 0;
     StreamWritePos = 0;
 
+    Recording = 0;
+    RecordCB = NULL;
+    RecordLength = 0;
+    RecordReadPos = 0;
+
     REG_MIC_IRQ_DISABLE = MIC_IRQ_ALL;
     REG_MIC_CNT = MIC_UNK3 | MIC_UNK5 | MIC_UNK8 | MIC_UNK15 | MIC_I2S_OFFSET(1) | MIC_UNK30;
 
@@ -140,6 +95,12 @@ int Audio_Init()
     WUP_SetIRQHandler(IRQ_MIC, MicIRQ, NULL, 0);
 
     return 1;
+}
+
+void Audio_DeInit()
+{
+    Audio_Stop();
+    Mic_Stop();
 }
 
 
@@ -191,6 +152,60 @@ void Audio_SetChanOrder(int order)
 }
 
 
+static void AudioIRQ(int irq, void* userdata)
+{
+    u32 irqreg = REG_AUDIO_IRQ_STATUS;
+
+    if (irqreg & AUDIO_IRQ_ALERT)
+    {
+        REG_AUDIO_IRQ_STATUS = AUDIO_IRQ_ALERT;
+
+        if (Playing == 1)
+        {
+            // finished playing sample
+            Playing = 0;
+
+            REG_AUDIO_IRQ_ENABLE &= ~(AUDIO_IRQ_ALERT | AUDIO_IRQ_STOP);
+            REG_AUDIO_PLAY_CNT |= PLAYCNT_MUTE;
+
+            if (SampleCB)
+                SampleCB();
+
+            SampleCB = NULL;
+        }
+        else if (Playing == 2)
+        {
+            // stream alert
+
+            // update the half of the buffer which isn't being played
+            u32 bufpos = REG_AUDIO_BUF_START + StreamWritePos;
+            int buflen = StreamLength >> 1;
+
+            StreamWritePos += buflen;
+            if (StreamWritePos >= StreamLength)
+                StreamWritePos -= StreamLength;
+
+            // update the alert count for the next IRQ
+            REG_AUDIO_ALERT_COUNT -= (buflen >> 3);
+
+            if (StreamCB)
+                StreamCB((void*)bufpos, buflen);
+        }
+    }
+
+    if (irqreg & AUDIO_IRQ_STOP)
+    {
+        REG_AUDIO_IRQ_STATUS = AUDIO_IRQ_STOP;
+
+        if (Playing)
+        {
+            Playing = 0;
+            SampleCB = NULL;
+            StreamCB = NULL;
+        }
+    }
+}
+
 static int SetupAudioRegs(void* buffer, int length, int format, int freq, int chans)
 {
     u32 bufptr = (u32)buffer;
@@ -207,17 +222,17 @@ static int SetupAudioRegs(void* buffer, int length, int format, int freq, int ch
     cnt &= ~(3<<23);
     switch (format)
     {
-        case AUDIO_FORMAT_PCM16:
-            cnt |= AUDIO_FMT_PCM16;
-            break;
-        case AUDIO_FORMAT_PCM8_MULAW:
-            cnt |= AUDIO_FMT_PCM8 | AUDIO_PCM8_MULAW;
-            break;
-        case AUDIO_FORMAT_PCM8_ALAW:
-            cnt |= AUDIO_FMT_PCM8 | AUDIO_PCM8_ALAW;
-            break;
-        default:
-            return 0;
+    case AUDIO_FORMAT_PCM16:
+        cnt |= AUDIO_FMT_PCM16;
+        break;
+    case AUDIO_FORMAT_PCM8_MULAW:
+        cnt |= AUDIO_FMT_PCM8 | AUDIO_PCM8_MULAW;
+        break;
+    case AUDIO_FORMAT_PCM8_ALAW:
+        cnt |= AUDIO_FMT_PCM8 | AUDIO_PCM8_ALAW;
+        break;
+    default:
+        return 0;
     }
 
     if (freq == AUDIO_FREQ_24KHZ)
@@ -297,4 +312,170 @@ void Audio_Stop()
 
     REG_AUDIO_IRQ_ENABLE &= ~AUDIO_IRQ_STOP;
     REG_AUDIO_PLAY_CNT |= PLAYCNT_MUTE;
+}
+
+
+static void MicIRQ(int irq, void* userdata)
+{
+    u32 irqreg = REG_MIC_IRQ_STATUS;
+    REG_MIC_IRQ_ACK = irqreg;
+
+    if (irqreg & MIC_IRQ_ALERT)
+    {
+        if (Recording == 1)
+        {
+            // finished recording sample
+            Recording = 0;
+
+            u32 bufpos = REG_MIC_BUF_START << 4;
+            int buflen = RecordLength;
+
+            REG_MIC_CNT &= ~MIC_ENABLE;
+
+            REG_MIC_IRQ_DISABLE = MIC_IRQ_ALL;
+            REG_MIC_IRQ_ACK = MIC_IRQ_ALL;
+
+            // reset?
+            REG_MIC_CNT |= MIC_RESET;
+            REG_MIC_CNT &= ~MIC_RESET;
+
+            if (RecordCB)
+                RecordCB((void*)bufpos, buflen);
+
+            RecordCB = NULL;
+        }
+        else if (Recording == 2)
+        {
+            // stream alert
+
+            // update the half of the buffer which isn't being recorded to
+            u32 bufpos = (REG_MIC_BUF_START << 4) + RecordReadPos;
+            int buflen = RecordLength >> 1;
+
+            RecordReadPos += buflen;
+            if (RecordReadPos >= RecordLength)
+                RecordReadPos -= RecordLength;
+
+            // update the alert count for the next IRQ
+            REG_MIC_ALERT_COUNT += (buflen >> 4);
+
+            if (RecordCB)
+                RecordCB((void*)bufpos, buflen);
+        }
+    }
+}
+
+static int SetupMicRegs(void* buffer, int length, int format, int freq)
+{
+    u32 bufptr = (u32)buffer;
+    if (bufptr & 0xF)
+        return 0;
+    if (length & 0xF)
+        return 0;
+
+    REG_MIC_BUF_START = bufptr >> 4;
+    REG_MIC_BUF_END = (bufptr + length) >> 4;
+
+    // reset?
+    REG_MIC_CNT |= MIC_RESET;
+    REG_MIC_CNT &= ~MIC_RESET;
+
+    u32 cnt = REG_MIC_CNT;
+
+    cnt &= ~(3<<13);
+    switch (format)
+    {
+    case AUDIO_FORMAT_PCM16:
+        cnt |= MIC_FMT_PCM16;
+        break;
+    case AUDIO_FORMAT_PCM8_MULAW:
+        cnt |= MIC_FMT_PCM8 | MIC_PCM8_MULAW;
+        break;
+    case AUDIO_FORMAT_PCM8_ALAW:
+        cnt |= MIC_FMT_PCM8 | MIC_PCM8_ALAW;
+        break;
+    default:
+        return 0;
+    }
+
+    if (freq == AUDIO_FREQ_24KHZ)
+        cnt |= MIC_RATE_HALF;
+    else
+        cnt &= ~MIC_RATE_HALF;
+
+    REG_MIC_CNT = cnt;
+
+    REG_MIC_REC_END = bufptr >> 4;
+
+    REG_MIC_IRQ_ACK = MIC_IRQ_ALL;
+    REG_MIC_IRQ_DISABLE = MIC_IRQ_UNK8;
+
+    return 1;
+}
+
+int Mic_RecordSample(void* buffer, int length, int format, int freq, fnRecordCb callback)
+{
+    if (!callback)
+        return 0;
+    if (Recording)
+        return 0;
+
+    if (!SetupMicRegs(buffer, length, format, freq))
+        return 0;
+
+    // trigger IRQ at end of buffer
+    REG_MIC_ALERT_COUNT = length >> 4;
+
+    RecordCB = callback;
+    RecordLength = length;
+    Recording = 1;
+
+    // start recording
+    REG_MIC_CNT |= MIC_ENABLE;
+
+    return 1;
+}
+
+int Mic_StartRecord(void* buffer, int length, int format, int freq, fnRecordCb callback)
+{
+    if (!callback)
+        return 0;
+    if (Recording)
+        return 0;
+
+    if (!SetupMicRegs(buffer, length, format, freq))
+        return 0;
+
+    // trigger IRQ at midpoint of buffer
+    REG_MIC_ALERT_COUNT = length >> 5;
+
+    RecordCB = callback;
+    RecordLength = length;
+    RecordReadPos = 0;
+    Recording = 2;
+
+    // start recording
+    REG_MIC_CNT |= MIC_ENABLE;
+
+    return 1;
+}
+
+void Mic_Stop()
+{
+    if (!Recording)
+        return;
+
+    REG_MIC_CNT &= ~MIC_ENABLE;
+
+    // TODO: should we wait for an IRQ here?
+
+    REG_MIC_IRQ_DISABLE = MIC_IRQ_ALL;
+    REG_MIC_IRQ_ACK = MIC_IRQ_ALL;
+
+    // reset?
+    REG_MIC_CNT |= MIC_RESET;
+    REG_MIC_CNT &= ~MIC_RESET;
+
+    Recording = 0;
+    RecordCB = NULL;
 }
