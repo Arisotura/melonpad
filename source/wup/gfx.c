@@ -77,10 +77,11 @@ void GFX_Init()
     REG_LCD_VTIMING = (434 << 16) | 510;
     REG_LCD_UNK0C = 8;
 
-    REG_UNK9508 = 8;
-    REG_UNK950C = 0xB2;
-    REG_UNK9510 = 0x15C;
-    REG_UNK9514 = 0x7FF;
+    // setup IRQ 0x1E with a 180 Hz frequency
+    REG_VCOUNT_MATCH(0) = 8;
+    REG_VCOUNT_MATCH(1) = 178;
+    REG_VCOUNT_MATCH(2) = 348;
+    REG_VCOUNT_MATCH(3) = 0x7FF; // disable
 
     // enable display
     REG_LCD_DISP_CNT |= DISP_ENABLE;
@@ -109,9 +110,9 @@ void GFX_WaitForVBlank()
 
 void GFX_SetPalette(u8 offset, u32* pal, int len)
 {
-    *(vu32*)0xF0009500 = offset;
+    REG_PALETTE_ADDR = offset;
     for (int i = 0; i < len; i++)
-        *(vu32*)0xF0009504 = pal[i];
+        REG_PALETTE_DATA = pal[i];
 }
 
 void* GFX_GetFramebuffer()

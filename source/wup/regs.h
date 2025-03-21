@@ -399,11 +399,12 @@
 #define REG_LCD_DISP_CNT        *(vu32*)0xF0009480
 #define REG_LCD_PIXEL_FMT       *(vu32*)0xF00094B0
 #define REG_LCD_UNKB4           *(vu32*)0xF00094B4
+#define REG_LCD_VCOUNT          *(vu32*)0xF00094C8
 
 // REG_LCD_DISP_CNT settings
 #define DISP_UNK0               (1<<0)
 #define DISP_ENABLE_OVERLAY     (1<<1) // enable overlay (framebuffer)
-#define DISP_UNK2               (1<<2)
+#define DISP_UNK2               (1<<2) // maybe enable video decoder output?
 #define DISP_UNK3               (1<<3)
 #define DISP_ENABLE             (1<<4) // enable display
 
@@ -416,10 +417,7 @@
 
 #define REG_PALETTE_ADDR        *(vu32*)0xF0009500
 #define REG_PALETTE_DATA        *(vu32*)0xF0009504
-#define REG_UNK9508             *(vu32*)0xF0009508
-#define REG_UNK950C             *(vu32*)0xF000950C
-#define REG_UNK9510             *(vu32*)0xF0009510
-#define REG_UNK9514             *(vu32*)0xF0009514
+#define REG_VCOUNT_MATCH(i)     *(vu32*)(0xF0009508 + ((i)<<2))
 
 
 #define REG_GAMMA_LUT(i)        *(vu32*)(0xF0009600 + ((i)<<2))
