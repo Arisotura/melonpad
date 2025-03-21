@@ -358,6 +358,8 @@
 // REG_MIC_CNT settings
 #define MIC_ENABLE              (1<<0)
 #define MIC_UNK3                (1<<3)
+#define MIC_UNK5                (1<<5)
+#define MIC_UNK8                (1<<8)
 #define MIC_RATE_HALF           (1<<12) // halve incoming sample rate
 #define MIC_FMT_PCM16           (0<<13)
 #define MIC_FMT_PCM8            (1<<13)
@@ -372,6 +374,7 @@
 #define MIC_IRQ_ALERT           (1<<0)
 #define MIC_IRQ_UNK4            (1<<4)
 #define MIC_IRQ_UNK8            (1<<8)
+#define MIC_IRQ_ALL             ((1<<0)|(1<<4)|(1<<8))
 
 
 // --- Video ------------------------------------------------------------------
