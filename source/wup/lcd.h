@@ -6,6 +6,8 @@
 
 void LCD_Init();
 void LCD_DeInit();
+
+//void LCD_SetBacklight(int enable);
 void LCD_SetBrightness(int brightness);
 
 #endif // LCD_H_

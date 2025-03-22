@@ -15,7 +15,7 @@
 #include "flash.h"
 #include "uic.h"
 #include "lcd.h"
-#include "gfx.h"
+#include "video.h"
 #include "audioamp.h"
 #include "audio.h"
 

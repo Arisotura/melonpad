@@ -60,6 +60,12 @@ void LCD_DeInit()
     GPIO_SET_OUTPUT_LOW(REG_GPIO_LCD_RESET);
 }
 
+
+/*void LCD_SetBacklight(int enable)
+{
+    UIC_SetBacklight(enable);
+}*/
+
 void LCD_SetBrightness(int brightness)
 {
     if (brightness < -1) brightness = -1;

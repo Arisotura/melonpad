@@ -23,4 +23,6 @@ int UIC_WriteEEPROM(u32 offset, u8* data, int length);
 
 void UIC_SetBacklight(int enable);
 
+void UIC_WaitWifiReady();
+
 #endif

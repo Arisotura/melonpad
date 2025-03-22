@@ -1,8 +1,6 @@
 #ifndef _REGS_H_
 #define _REGS_H_
 
-// TODO: define all the registers here instead of using hardcoded addresses
-
 // --- General registers ------------------------------------------------------
 
 #define REG_HARDWARE_ID         *(vu32*)0xF0000000

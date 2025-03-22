@@ -351,3 +351,15 @@ void UIC_SetBacklight(int enable)
     u8 buf = enable ? 1 : 0;
     UIC_SendCommand(0x12, &buf, 1, NULL, 0);
 }
+
+void UIC_WaitWifiReady()
+{
+    for (;;)
+    {
+        u8 ready = 0;
+        UIC_SendCommand(0x13, NULL, 0, &ready, 1);
+        if (ready) return;
+
+        WUP_DelayMS(1);
+    }
+}

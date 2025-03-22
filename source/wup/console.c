@@ -30,7 +30,7 @@ int Console_Open(int w, int h)
     for (int i = 1; i < 256; i++)
         pal[i] = 0xFFFFFFFF;
 
-    GFX_SetPalette(0, pal, 256);
+    Video_SetOvlPalette(0, pal, 256);
 
     Width = w;
     Height = h;
@@ -134,7 +134,7 @@ void Console_Update()
     if (!Active) return;
     if (!Dirty) return;
 
-    u8* framebuf = GFX_GetFramebuffer();
+    u8* framebuf = Video_GetOvlFramebuffer();
     int fbstride = 856; // TODO: not hardcode this!!
 
     DC_FlushRange(Buffer, LineStride * 16 * Height);

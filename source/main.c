@@ -8,6 +8,9 @@
 #include "sc_wifi_scan.h"
 
 
+u16* Framebuffer;
+
+
 u32 GetCP15Reg(int cn, int cm, int cp);
 
 
@@ -91,8 +94,10 @@ void flushcb(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
 {
     /*u8* dst = (u8*)0x380000;
     int dststride = 856;*/
-    u16* dst = (u16*)0x300000;
+    u16* dst = Framebuffer;
     int dststride = 854;
+
+    //u32 t1 = REG_COUNTUP_VALUE;
 
     int i = 0;
     for (int y = area->y1; y <= area->y2; y++)
@@ -102,6 +107,17 @@ void flushcb(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
             dst[(y*dststride)+x] = ((u16*)px_map)[i++];
         }
     }
+
+    /*int linelen = area->x2 - area->x1 + 1;
+    int srcstride = linelen * 2;
+    int len = srcstride * (area->y2 - area->y1 + 1);
+    DC_FlushRange(px_map, len);
+    dst += (area->y1 * dststride) + area->x1;
+    GPDMA_BlitTransfer(2, px_map, srcstride, dst, dststride*2, linelen*2, len);
+    GPDMA_Wait(2);*/
+
+    //u32 t2 = REG_COUNTUP_VALUE;
+    //printf("flushcb: %d x %d, %d ns\n", area->x2-area->x1+1, area->y2-area->y1+1, t2-t1);
 
     lv_display_flush_ready(display);
 }
@@ -314,6 +330,41 @@ void vbl_end(int irq, void* userdata)
     vblendflag = 1;
 }
 
+// FLASH
+// 1MB slots
+// 00: boot (taken)
+// 01-04: see how far stock firmware goes (check both banks)
+// 05-08: same
+// 09-10: see how far language bank goes (check both banks)
+// 11-18: same
+// 19-1A: IR shit (taken)
+// 1B: free
+// 1C-1F: service firmware (taken but freeable)
+
+// 0=free 1=taken 2=overwrite warning 3=service fw warning
+// er
+// 0=free 1=
+u8 FlashTable[32];
+
+void InitFlashTable()
+{
+    FlashTable[0x00] = 1;
+    for (int i = 0x01; i < 0x19; i++)
+        FlashTable[i] = 2;
+    FlashTable[0x19] = 1;
+    FlashTable[0x1A] = 1;
+    FlashTable[0x1B] = 0;
+    for (int i = 0x1C; i < 0x20; i++)
+        FlashTable[i] = 3;
+
+    u32 indxinfo[4];
+    Flash_Read(0x100000, (u8*)indxinfo, 16);
+    if (indxinfo[2] == 0x58444E49 && indxinfo[1] < 0x100)
+    {
+        //
+    }
+}
+
 
 
 
@@ -321,8 +372,7 @@ void LoadBinaryFromFlash(u32 addr)
 {
     AudioAmp_DeInit();
     //UIC_SetBacklight(0);
-    LCD_SetBrightness(-1);
-    *(vu32*)0xF0005100 = 0xC200;
+    LCD_DeInit();
     //Wifi_DeInit();
     WUP_DelayUS(60);
 
@@ -369,12 +419,66 @@ void scantest(sScanInfo* list)
 }
 
 
+/*
+int buflen = 0x2000;
+u8* audiobuf;
+u32 flashaddr;
+u8* flashbuf;
+volatile u8 needflash;
+
+void streamcb(void* buffer, int length)
+{
+    memcpy(buffer, flashbuf, length);
+    needflash = 1;
+}
+
+void streaminit()
+{
+    audiobuf = (u8*)memalign(16, buflen);
+    flashbuf = (u8*)malloc(buflen>>1);
+
+    memset(audiobuf, 0, buflen);
+    memset(flashbuf, 0, buflen>>1);
+    flashaddr = 0x100000;
+
+    Flash_Read(flashaddr, flashbuf, buflen>>1);
+    flashaddr += (buflen>>1);
+    needflash = 0;
+
+    Audio_StartStream(audiobuf, buflen, AUDIO_FORMAT_PCM8_ALAW, AUDIO_FREQ_48KHZ, 2, streamcb);
+}
+
+void streamzorz()
+{
+    if (!needflash) return;
+
+    Flash_Read(flashaddr, flashbuf, buflen>>1);
+    flashaddr += (buflen>>1);
+    needflash = 0;
+}
+*/
+
+
+
+int _write(int file, char *ptr, int len);
+
+u32 intv = 0;
+u32 last = 0;
+void irq1E(int irq, void* userdata)
+{
+    u32 t = REG_COUNTUP_VALUE;
+    intv = t - last;
+    last = t;
+}
+
+
+
 void uictest();
 extern u32 irqlog[16];
 void main()
 {
 	u32 i;
-	
+#if 0
 	// setup GPIO
 	*(vu32*)0xF0005114 = 0xC200;
 
@@ -387,24 +491,33 @@ void main()
 
     vblendflag = 0;
     WUP_SetIRQHandler(0x15, vbl_end, NULL, 0);
+#endif
 
+    int fblen = 854 * 480 * sizeof(u16);
+    Framebuffer = (u16*)memalign(16, fblen);
+    memset(Framebuffer, 0, fblen);
+    Video_SetOvlFramebuffer(Framebuffer, 0, 0, 854, 480, 854*2, PIXEL_FMT_RGB565);
+    Video_SetOvlEnable(1);
 
-	u8 buf[16];
+    Video_SetDisplayEnable(1);
+
+	//u8 buf[16];
 
     lv_init();
     lv_tick_set_cb((lv_tick_get_cb_t)WUP_GetTicks);
 
     lv_display_t* disp = lv_display_create(854, 480);
 
-    u8* dispbuf1 = (u8*)memalign(16, 854*480/10);
-    u8* dispbuf2 = NULL;//(u8*)memalign(16, 854*480/10);
-    lv_display_set_buffers(disp, dispbuf1, dispbuf2, 854*480/10, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    int lv_fblen = fblen / 10;
+    u8* dispbuf1 = (u8*)memalign(16, lv_fblen);
+    u8* dispbuf2 = NULL;//(u8*)memalign(16, lv_fblen);
+    lv_display_set_buffers(disp, dispbuf1, dispbuf2, lv_fblen, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, flushcb);
 
-    u32 palette[256];
+    /*u32 palette[256];
     for (int i = 0; i < 256; i++)
         palette[i] = 0xFF000000 | (i * 0x010101);
-    GFX_SetPalette(0, palette, 256);
+    Video_SetPalette(0, palette, 256);*/
 
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
@@ -475,10 +588,15 @@ void main()
     //shit_testbench();
     //flash_testbench();
     //flash_testbench2();
+    //dma_testbench();
+
+    //streaminit();
+    //WUP_SetIRQHandler(0x1E, irq1E, NULL, 0);
 
 
     int frame = 0;
     int d = 0;
+    //u32 regaddr = 0xF0005000;
     u32 regaddr = 0xF0005000;
     u16 oldval = 0;
     u8 poop = 0;
@@ -500,8 +618,11 @@ void main()
         inputdata = test;
 
         // TODO: integrate this elsewhere
-        //Audio_SetVolume(test->AudioVolume);
-        //Audio_SetOutput((test->PowerStatus & (1<<5)) ? 1:0);
+        Audio_SetVolume(test->AudioVolume);
+        Audio_SetOutput((test->PowerStatus & (1<<5)) ? 1:0);
+
+        //streamzorz();
+        //printf("1E intv = %d\n", intv);
 
         /*if (test->ButtonsPressed & BTN_X)
         {
@@ -545,6 +666,23 @@ void main()
             //LoadBinaryFromFlash(0x500000);
             //void Wifi_JoinNetwork(u32, u32);
             //Wifi_JoinNetwork(6, 0x84);
+            /*printf("DHCP GO!\n");
+            void Wifi_Test();
+            Wifi_Test();*/
+            /**(vu32*)regaddr = 0xC200;
+            printf("%08X = %08X\n", regaddr, *(vu32*)regaddr);
+            regaddr += 4;*/
+            /*REG_HARDWARE_RESET |= (1<<derp);
+            REG_HARDWARE_RESET &= ~(1<<derp);
+            printf("reset: bit %d\n", derp);
+            derp++;*/
+            //if (!(derp & 1)) REG_LCD_PIXEL_FMT |= (1 << (derp>>1));
+            //else REG_LCD_PIXEL_FMT &= ~(1 << (derp>>1));
+            /*printf("derp=%d reg=%08X\n", derp, REG_LCD_PIXEL_FMT);
+            derp++;*/
+            LCD_SetBrightness(d);
+            printf("bright=%d\n", d);
+            d++;
         }
 
         if (test->ButtonsPressed & BTN_A)
@@ -596,24 +734,73 @@ void main()
 #endif
         }
 
+        if (test->ButtonsPressed & BTN_X)
+        {
+            //audiotest();
+        }
+        if (test->ButtonsPressed & BTN_Y)
+        {
+            //for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
+            //    printf("%08X: %08X/%08X/%08X/%08X\n", r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
+            //audiotest2();
+        }
+
         if (test->ButtonsPressed & BTN_UP)
         {
             /*wsecid++;
             if (wsecvals[wsecid] == -1)
                 wsecid = 0;
             printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);*/
-            void LCD_test(int);
-            printf("der=%d\n", derp);
-            LCD_test(derp);
-            derp++;
+            //*(vu32*)0xF0005420 |= 16;
+            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
+            //*(vu32*)0xF0005400 ^= (1<<20);
+            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
+            // bit22: lower pitch, longer
+            // bit23: same
+            // bit24: ??
+            //
+            // bit19 = ??
+            // bit18 = ??
+            // bit20 = very quiet
+            // bit21 = very quiet
+            // bit22 = halve pitch? still stereo
+            // bit23 = PCM8
+            // bit24 = makes PCM8 output quieter (8bit but not shifted?)
+            // 5404 bit7 = lower pitch, output to both channels (mixed)
+            //*(vu32*)0xF0005420 ^= (1<<2);
+            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
+            //for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
+            //    printf("%08X: %08X/%08X/%08X/%08X\n", r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
         }
 
         if (test->ButtonsPressed & BTN_DOWN)
         {
-            wpaauthid++;
+            /*wpaauthid++;
             if (wpaauthvals[wpaauthid] == -1)
                 wpaauthid = 0;
-            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);
+            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);*/
+            //*(vu32*)0xF0005420 &= ~16;
+            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
+            //*(vu32*)0xF000542C |= 1;
+            //*(vu32*)0xF0005400 ^= (1<<23);
+            //*(vu32*)0xF0005400 ^= (1<<19);
+            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
+            //*(vu32*)0xF0005420 ^= (1<<1);
+            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
+        }
+        if (test->ButtonsPressed & BTN_LEFT)
+        {
+            //*(vu32*)0xF0005400 ^= (1<<24);
+            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
+            //mictest();
+        }
+        if (test->ButtonsPressed & BTN_RIGHT)
+        {
+            /**(vu32*)0xF0005404 ^= (1<<7);
+            printf("5404 = %08X\n", *(vu32*)0xF0005404);*/
+            //*(vu32*)0xF0005400 ^= (1<<18);
+            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
+           // mictest2();
         }
 
         /**(vu32*)regaddr ^= 0x0100;
@@ -642,7 +829,7 @@ void main()
         // value less than 0x100 makes vblank a bit longer? (36ns)
         // 533970 pixels in ~16638ns
         // 1 pixel in X ns
-#define reg 0xF000950C
+/*#define reg 0xF000950C
 #define step 10
         if (test->ButtonsPressed & BTN_LEFT)
         {
@@ -653,15 +840,14 @@ void main()
         {
             (*(vu32*)reg) += step;
             printf("reg=%08X\n", *(vu32*)reg);
-        }
+        }*/
         // aaagdsrdfdddd
-        if (test->ButtonsPressed & (BTN_Y | BTN_SYNC))
+        if (test->ButtonsPressed & BTN_SYNC)//(BTN_Y | BTN_SYNC))
         {
             //resettest(d);
             AudioAmp_DeInit();
             //UIC_SetBacklight(0);
-            LCD_SetBrightness(-1);
-            *(vu32*)0xF0005100 = 0xC200;
+            LCD_DeInit();
             Wifi_DeInit();
             WUP_DelayUS(60);
 
@@ -692,7 +878,7 @@ void main()
 
         Wifi_Update();
 
-        GFX_WaitForVBlank();
+        Video_WaitForVBlank();
         /*u32 vbl = REG_COUNTUP_VALUE;
 
         vblendflag = 0;

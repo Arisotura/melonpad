@@ -214,7 +214,7 @@ void WUP_Init()
     Flash_Init();
     UIC_Init();
 
-    GFX_Init();
+    Video_Init();
     LCD_Init();
 
     AudioAmp_Init();
