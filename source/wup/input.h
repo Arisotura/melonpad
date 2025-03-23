@@ -23,6 +23,7 @@
 
 #define PWR_AC_CONNECTED    (1<<0)
 #define PWR_BTN_PRESSED     (1<<1)
+#define PWR_HEADPHONES      (1<<5)
 #define PWR_CHARGING        (1<<6)
 
 typedef struct
@@ -60,6 +61,7 @@ typedef struct
 
 void Input_Init();
 
-sInputData* Input_Scan();
+void Input_Scan();
+sInputData* Input_GetData();
 
 #endif // _INPUT_H_

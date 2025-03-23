@@ -5,6 +5,7 @@
 #include <wup/wup.h>
 #include <lvgl/lvgl.h>
 
+#include "main.h"
 #include "sc_wifi_scan.h"
 
 extern const lv_image_dsc_t wifi_0, wifi_1, wifi_2, wifi_3, wifi_4;

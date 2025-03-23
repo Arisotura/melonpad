@@ -230,6 +230,24 @@ void WUP_Init()
     Wifi_Init();
 }
 
+void WUP_DeInit()
+{
+    REG_GPIO_RUMBLE = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
+
+    Wifi_DeInit();
+    AudioAmp_DeInit();
+    LCD_DeInit();
+}
+
+void WUP_Update()
+{
+    // TODO! all this stuff should go in dedicated threads
+    // (whenever we get RTOS stuff going)
+
+    Input_Scan();
+    Wifi_Update();
+}
+
 
 void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
 {

@@ -5,22 +5,42 @@
 #include <wup/wup.h>
 #include <lvgl/lvgl.h>
 
+#include "main.h"
+#include "sc_boot_menu.h"
 #include "sc_wifi_scan.h"
 
 
 u16* Framebuffer;
 
+static lv_style_t scScreenStyle;
+static lv_style_t scTopbarStyle;
+static lv_style_t scBodyStyle;
 
-u32 GetCP15Reg(int cn, int cm, int cp);
 
-
-void rumble()
+lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title)
 {
-	*(vu32*)0xF0005114 |= 0x0100;
-    WUP_DelayMS(250);
-	*(vu32*)0xF0005114 &= ~0x0100;
-    WUP_DelayMS(250);
+    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(screen, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_style(screen, &scScreenStyle, 0);
+
+    lv_obj_t* topbar = lv_obj_create(screen);
+    lv_obj_set_size(topbar, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_add_style(topbar, &scTopbarStyle, 0);
+
+    lv_obj_t* label = lv_label_create(topbar);
+    lv_label_set_text(label, title);
+    lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // TODO: add status icons and shit
+
+    lv_obj_t* body = lv_obj_create(screen);
+    lv_obj_set_width(body, lv_pct(100));
+    lv_obj_set_flex_grow(body, 1);
+    lv_obj_add_style(body, &scBodyStyle, 0);
+
+    return body;
 }
+
 
 
 // FPGA debug output
@@ -185,17 +205,24 @@ void lv_example_button_1(void)
     lv_obj_set_size(list1, lv_pct(70), 480-40);
     lv_obj_align(list1, LV_ALIGN_TOP_LEFT, 0, 40);
 
+    lv_group_t* grp = lv_group_create();
+
     lv_obj_t * btn;
     lv_list_add_text(list1, "Boot menu");
     btn = lv_list_add_button(list1, NULL, "Stock firmware");
+    lv_group_add_obj(grp, btn);
     //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
     btn = lv_list_add_button(list1, NULL, "lucario.fw");
+    lv_group_add_obj(grp, btn);
     //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
     btn = lv_list_add_button(list1, NULL, "Checkerboard");
+    lv_group_add_obj(grp, btn);
     //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
     btn = lv_list_add_button(list1, NULL, "Ass vibrator");
+    lv_group_add_obj(grp, btn);
     //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
     btn = lv_list_add_button(list1, NULL, "5 is red");
+    lv_group_add_obj(grp, btn);
     //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
 
 
@@ -212,123 +239,32 @@ void lv_example_button_1(void)
     btn = lv_list_add_button(list2, LV_SYMBOL_BLUETOOTH, "Connect to IR");
 }
 
-void lv_example_button_2(void)
-{
-    /*Init the style for the default state*/
-    static lv_style_t style;
-    lv_style_init(&style);
 
-    lv_style_set_radius(&style, 3);
-
-    lv_style_set_bg_opa(&style, LV_OPA_100);
-    lv_style_set_bg_color(&style, lv_palette_main(LV_PALETTE_BLUE));
-    lv_style_set_bg_grad_color(&style, lv_palette_darken(LV_PALETTE_BLUE, 2));
-    lv_style_set_bg_grad_dir(&style, LV_GRAD_DIR_VER);
-
-    lv_style_set_border_opa(&style, LV_OPA_40);
-    lv_style_set_border_width(&style, 2);
-    lv_style_set_border_color(&style, lv_palette_main(LV_PALETTE_GREY));
-
-    lv_style_set_shadow_width(&style, 8);
-    lv_style_set_shadow_color(&style, lv_palette_main(LV_PALETTE_GREY));
-    lv_style_set_shadow_offset_y(&style, 8);
-
-    lv_style_set_outline_opa(&style, LV_OPA_COVER);
-    lv_style_set_outline_color(&style, lv_palette_main(LV_PALETTE_BLUE));
-
-    lv_style_set_text_color(&style, lv_color_white());
-    lv_style_set_pad_all(&style, 10);
-
-    /*Init the pressed style*/
-    static lv_style_t style_pr;
-    lv_style_init(&style_pr);
-
-    /*Add a large outline when pressed*/
-    lv_style_set_outline_width(&style_pr, 30);
-    lv_style_set_outline_opa(&style_pr, LV_OPA_TRANSP);
-
-    lv_style_set_translate_y(&style_pr, 5);
-    lv_style_set_shadow_offset_y(&style_pr, 3);
-    lv_style_set_bg_color(&style_pr, lv_palette_darken(LV_PALETTE_BLUE, 2));
-    lv_style_set_bg_grad_color(&style_pr, lv_palette_darken(LV_PALETTE_BLUE, 4));
-
-    /*Add a transition to the outline*/
-    static lv_style_transition_dsc_t trans;
-    static lv_style_prop_t props[] = {LV_STYLE_OUTLINE_WIDTH, LV_STYLE_OUTLINE_OPA, 0};
-    lv_style_transition_dsc_init(&trans, props, lv_anim_path_linear, 300, 0, NULL);
-
-    lv_style_set_transition(&style_pr, &trans);
-
-    lv_obj_t * btn1 = lv_button_create(lv_screen_active());
-    lv_obj_remove_style_all(btn1);                          /*Remove the style coming from the theme*/
-    lv_obj_add_style(btn1, &style, 0);
-    lv_obj_add_style(btn1, &style_pr, LV_STATE_PRESSED);
-    lv_obj_set_size(btn1, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_center(btn1);
-
-    lv_obj_t * label = lv_label_create(btn1);
-    lv_label_set_text(label, "Button");
-    lv_obj_center(label);
-}
-
-void lv_example_button_3(void)
-{
-    /*Properties to transition*/
-    static lv_style_prop_t props[] = {
-            LV_STYLE_TRANSFORM_WIDTH, LV_STYLE_TRANSFORM_HEIGHT, LV_STYLE_TEXT_LETTER_SPACE, 0
-    };
-
-    /*Transition descriptor when going back to the default state.
-     *Add some delay to be sure the press transition is visible even if the press was very short*/
-    static lv_style_transition_dsc_t transition_dsc_def;
-    lv_style_transition_dsc_init(&transition_dsc_def, props, lv_anim_path_overshoot, 250, 100, NULL);
-
-    /*Transition descriptor when going to pressed state.
-     *No delay, go to presses state immediately*/
-    static lv_style_transition_dsc_t transition_dsc_pr;
-    lv_style_transition_dsc_init(&transition_dsc_pr, props, lv_anim_path_ease_in_out, 250, 0, NULL);
-
-    /*Add only the new transition to he default state*/
-    static lv_style_t style_def;
-    lv_style_init(&style_def);
-    lv_style_set_transition(&style_def, &transition_dsc_def);
-
-    /*Add the transition and some transformation to the presses state.*/
-    static lv_style_t style_pr;
-    lv_style_init(&style_pr);
-    lv_style_set_transform_width(&style_pr, 10);
-    lv_style_set_transform_height(&style_pr, -10);
-    lv_style_set_text_letter_space(&style_pr, 10);
-    lv_style_set_transition(&style_pr, &transition_dsc_pr);
-
-    lv_obj_t * btn1 = lv_button_create(lv_screen_active());
-    lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -80);
-    lv_obj_add_style(btn1, &style_pr, LV_STATE_PRESSED);
-    lv_obj_add_style(btn1, &style_def, 0);
-
-    lv_obj_t * label = lv_label_create(btn1);
-    lv_label_set_text(label, "Gum");
-}
 
 sInputData* inputdata;
-void readtouch(lv_indev_t * indev, lv_indev_data_t * data)
+void readtouch(lv_indev_t* indev, lv_indev_data_t* data)
 {
-    if (inputdata->TouchPressed)
+    sInputData* input = Input_GetData();
+    if (input->TouchPressed)
     {
-        data->point.x = inputdata->TouchX;
-        data->point.y = inputdata->TouchY;
+        data->point.x = input->TouchX;
+        data->point.y = input->TouchY;
         data->state = LV_INDEV_STATE_PRESSED;
     }
     else
         data->state = LV_INDEV_STATE_RELEASED;
 }
 
-
-volatile u8 vblendflag;
-void vbl_end(int irq, void* userdata)
+void readkeypad(lv_indev_t* indev, lv_indev_data_t* data)
 {
-    vblendflag = 1;
+    //data->key = LV_KEY_DOWN;
+    data->key = LV_KEY_NEXT;
+    if (inputdata->ButtonsDown & BTN_DOWN)
+        data->state = LV_INDEV_STATE_PRESSED;
+    else
+        data->state = LV_INDEV_STATE_RELEASED;
 }
+
 
 // FLASH
 // 1MB slots
@@ -405,76 +341,48 @@ void LoadBinaryFromFlash(u32 addr)
 }
 
 
-void scantest(sScanInfo* list)
-{
-    printf("RECEIVED SCAN INFO\n");
+sScreen* scCurrent;
+sScreen* scStack[8];
+u8 scStackLevel;
+u8 scCloseFlag;
 
-    sScanInfo* cur = list;
-    while (cur)
+void scOpen(sScreen* sc)
+{
+    if (scStackLevel >= 8)
     {
-        printf("RESULT: %s, CHAN=%d, SEC=%d, RSSI=%d QUAL=%d\n", cur->SSID, cur->Channel, cur->Security, cur->RSSI, cur->SignalQuality);
-
-        cur = cur->Next;
+        printf("scOpen(): STACK OVERFLOW!!\n");
+        return;
     }
+
+    sc->Open();
+    sc->Activate();
+    scStack[scStackLevel++] = sc;
+    scCurrent = sc;
 }
 
-
-/*
-int buflen = 0x2000;
-u8* audiobuf;
-u32 flashaddr;
-u8* flashbuf;
-volatile u8 needflash;
-
-void streamcb(void* buffer, int length)
+void scDoCloseCurrent()
 {
-    memcpy(buffer, flashbuf, length);
-    needflash = 1;
+    scCloseFlag = 0;
+
+    if (scStackLevel == 0)
+    {
+        printf("scCloseCurrent(): cannot close toplevel screen\n");
+        return;
+    }
+
+    scCurrent->Close();
+    scCurrent = scStack[--scStackLevel];
+    scCurrent->Activate();
 }
 
-void streaminit()
+void scCloseCurrent()
 {
-    audiobuf = (u8*)memalign(16, buflen);
-    flashbuf = (u8*)malloc(buflen>>1);
-
-    memset(audiobuf, 0, buflen);
-    memset(flashbuf, 0, buflen>>1);
-    flashaddr = 0x100000;
-
-    Flash_Read(flashaddr, flashbuf, buflen>>1);
-    flashaddr += (buflen>>1);
-    needflash = 0;
-
-    Audio_StartStream(audiobuf, buflen, AUDIO_FORMAT_PCM8_ALAW, AUDIO_FREQ_48KHZ, 2, streamcb);
-}
-
-void streamzorz()
-{
-    if (!needflash) return;
-
-    Flash_Read(flashaddr, flashbuf, buflen>>1);
-    flashaddr += (buflen>>1);
-    needflash = 0;
-}
-*/
-
-
-
-int _write(int file, char *ptr, int len);
-
-u32 intv = 0;
-u32 last = 0;
-void irq1E(int irq, void* userdata)
-{
-    u32 t = REG_COUNTUP_VALUE;
-    intv = t - last;
-    last = t;
+    scCloseFlag = 1;
 }
 
 
 
-void uictest();
-extern u32 irqlog[16];
+
 void main()
 {
 	u32 i;
@@ -500,327 +408,57 @@ void main()
     lv_display_set_buffers(disp, dispbuf1, dispbuf2, lv_fblen, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, flushcb);
 
-    /*u32 palette[256];
-    for (int i = 0; i < 256; i++)
-        palette[i] = 0xFF000000 | (i * 0x010101);
-    Video_SetPalette(0, palette, 256);*/
-
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(touch, readtouch);
+    // lv_indev_set_user_data()
 
-    lv_example_button_1();
+    /*lv_indev_t* keypad = lv_indev_create();
+    lv_indev_set_type(keypad, LV_INDEV_TYPE_KEYPAD);
+    lv_indev_set_read_cb(keypad, readkeypad);*/
+
+    lv_style_init(&scScreenStyle);
+    lv_style_set_pad_row(&scScreenStyle, 0);
+
+    lv_style_init(&scTopbarStyle);
+    lv_style_set_border_side(&scTopbarStyle, LV_BORDER_SIDE_BOTTOM);
+    lv_style_set_margin_top(&scTopbarStyle, 0);
+    lv_style_set_margin_left(&scTopbarStyle, 0);
+    lv_style_set_margin_right(&scTopbarStyle, 0);
+    lv_style_set_margin_bottom(&scTopbarStyle, 0);
+    lv_style_set_radius(&scTopbarStyle, 0);
+    lv_style_set_pad_all(&scTopbarStyle, 10);
+
+    lv_style_init(&scBodyStyle);
+    lv_style_set_border_side(&scBodyStyle, LV_BORDER_SIDE_NONE);
+    lv_style_set_margin_top(&scBodyStyle, 0);
+    lv_style_set_margin_left(&scBodyStyle, 0);
+    lv_style_set_margin_right(&scBodyStyle, 0);
+    lv_style_set_margin_bottom(&scBodyStyle, 0);
+    lv_style_set_radius(&scBodyStyle, 0);
+    lv_style_set_pad_all(&scBodyStyle, 10);
+
+    //lv_example_button_1();
     //lv_example_button_2();
     //lv_example_button_3();
-    ScWifiScan_Init();
+    //ScWifiScan_Init();
 
-    //Console_OpenDefault();
+    scCurrent = NULL;
+    memset(scStack, 0, sizeof(scStack));
+    scStackLevel = 0;
+    scCloseFlag = 0;
 
+    scOpen(&scBootMenu);
 
-    int frame = 0;
-    int d = 0;
-    //u32 regaddr = 0xF0005000;
-    u32 regaddr = 0xF0005000;
-    u16 oldval = 0;
-    u8 poop = 0;
-
-    u32 wsecvals[] = {2, 4, 6, -1};
-    u32 wpaauthvals[] = {4, 0x80, -1};
-    int wsecid = 0;
-    int wpaauthid = 0;
-
-    u32 lastvbl = 0;
-    int derp = 4;
-    int __test = 0;
 	for (;;)
 	{
-		frame++;
-		if (frame >= 15) frame = 0;
+		WUP_Update();
 
-        sInputData* test = Input_Scan();
-        inputdata = test;
+        scCurrent->Update();
+        if (scCloseFlag)
+            scDoCloseCurrent();
 
-        // TODO: integrate this elsewhere
-        Audio_SetVolume(test->AudioVolume);
-        Audio_SetOutput((test->PowerStatus & (1<<5)) ? 1:0);
-
-        //streamzorz();
-        //printf("1E intv = %d\n", intv);
-
-        /*if (test->ButtonsPressed & BTN_X)
-        {
-            printf("Pressed X\n");
-            UIC_SetBacklight(0);
-            WUP_DelayMS(10);
-            UIC_SendCommand(0x14, NULL, 0, NULL, 0);
-        }*/
-
-        /*if (test->ButtonsDown & BTN_A)
-            printf("Pressed A! frame=%d\n", frame);
-        if (test->ButtonsPressed & BTN_B)
-            printf("Pressed B! frame=%d\n", frame);
-        if (test->ButtonsDown & BTN_UP)
-            printf("Pressed UP! frame=%d,\nthis is a multi-line printf\nI like it\n", frame);
-        if (test->ButtonsDown & BTN_DOWN)
-            printf("Pressed DOWN! this is going to be a really long line, the point is to test how far the console thing can go and whether it handles this correctly\n");
-*/
-
-        /*if (test->ButtonsPressed & BTN_A)
-        {
-            printf("attempting to join network\n");
-            Wifi_JoinNetwork(wsecvals[wsecid], wpaauthvals[wpaauthid]);
-        }
-
-        if (test->ButtonsPressed & BTN_B)
-        {
-            printf("scanning for networks\n");
-            Wifi_StartScan2(1);
-        }
-
-        if (test->ButtonsPressed & BTN_X)
-        {
-            printf("sending test packet\n");
-            Wifi_Test();
-        }*/
-
-        if (test->ButtonsPressed & BTN_B)
-        {
-            //printf("lucario?\n");
-            //LoadBinaryFromFlash(0x500000);
-            //void Wifi_JoinNetwork(u32, u32);
-            //Wifi_JoinNetwork(6, 0x84);
-            /*printf("DHCP GO!\n");
-            void Wifi_Test();
-            Wifi_Test();*/
-            /**(vu32*)regaddr = 0xC200;
-            printf("%08X = %08X\n", regaddr, *(vu32*)regaddr);
-            regaddr += 4;*/
-            /*REG_HARDWARE_RESET |= (1<<derp);
-            REG_HARDWARE_RESET &= ~(1<<derp);
-            printf("reset: bit %d\n", derp);
-            derp++;*/
-            //if (!(derp & 1)) REG_LCD_PIXEL_FMT |= (1 << (derp>>1));
-            //else REG_LCD_PIXEL_FMT &= ~(1 << (derp>>1));
-            /*printf("derp=%d reg=%08X\n", derp, REG_LCD_PIXEL_FMT);
-            derp++;*/
-            LCD_SetBrightness(d);
-            printf("bright=%d\n", d);
-            d++;
-        }
-
-        if (test->ButtonsPressed & BTN_A)
-        {
-            ScWifiScan_Enter();
-            __test = 1;
-            //Wifi_StartScan(scantest);
-            //printf("rebooting?\n");
-            //LoadBinaryFromFlash(0x100000);
-            //flash_testbench2();
-#if 0
-            AudioAmp_DeInit();
-            //UIC_SetBacklight(0);
-            LCD_SetBrightness(-1);
-            *(vu32*)0xF0005100 = 0xC200;
-            //Wifi_DeInit();
-            WUP_DelayUS(60);
-
-            /*REG_DMA_CNT = 0;
-
-            REG_SPI_CNT = 0;
-            REG_SPI_SPEED = 0;*/
-
-            // trigger soft reset
-            //DisableIRQ();
-            *(vu32*)0xF0001200 = 0xFFFF;
-            *(vu32*)0xF0001204 = 0xFFFF;
-
-            *(vu32*)0xF0004400 = 0;
-            *(vu32*)0xF0004424 = 0;
-
-            *(vu32*)0xF00050EC = 0x8000;    // clock
-            *(vu32*)0xF00050F0 = 0x0000;    // MISO
-            *(vu32*)0xF00050F4 = 0x8000;    // MOSI
-            *(vu32*)0xF00050F8 = 0x8000;    // FLASH CS
-            *(vu32*)0xF00050FC = 0x8000;    // UIC CS
-
-            //u32 zzn = *(vu32*)0xF0000030;
-            //*(vu32*)0xF0000030 &= ~0x300;
-            //printf("zzn=%08X/%08X\n", zzn, *(vu32*)0xF0000030);
-            //for(;;);
-
-            *(vu32*)0xF0000058 = 0xFFFFFFFB;
-            //*(vu32*)0xF0000058 = 0x3;
-            *(vu32*)0xF0000058 = 0;
-            *(vu32*)0xF0000004 = 0;
-            *(vu32*)0xF0000004 = 1;
-            for (;;);
-#endif
-        }
-
-        if (test->ButtonsPressed & BTN_X)
-        {
-            //audiotest();
-        }
-        if (test->ButtonsPressed & BTN_Y)
-        {
-            //for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
-            //    printf("%08X: %08X/%08X/%08X/%08X\n", r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-            //audiotest2();
-        }
-
-        if (test->ButtonsPressed & BTN_UP)
-        {
-            /*wsecid++;
-            if (wsecvals[wsecid] == -1)
-                wsecid = 0;
-            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);*/
-            //*(vu32*)0xF0005420 |= 16;
-            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
-            //*(vu32*)0xF0005400 ^= (1<<20);
-            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
-            // bit22: lower pitch, longer
-            // bit23: same
-            // bit24: ??
-            //
-            // bit19 = ??
-            // bit18 = ??
-            // bit20 = very quiet
-            // bit21 = very quiet
-            // bit22 = halve pitch? still stereo
-            // bit23 = PCM8
-            // bit24 = makes PCM8 output quieter (8bit but not shifted?)
-            // 5404 bit7 = lower pitch, output to both channels (mixed)
-            //*(vu32*)0xF0005420 ^= (1<<2);
-            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
-            //for (u32 r = 0xF0005400; r < 0xF0005500; r+=16)
-            //    printf("%08X: %08X/%08X/%08X/%08X\n", r, *(vu32*)(r), *(vu32*)(r+4), *(vu32*)(r+8), *(vu32*)(r+12));
-        }
-
-        if (test->ButtonsPressed & BTN_DOWN)
-        {
-            /*wpaauthid++;
-            if (wpaauthvals[wpaauthid] == -1)
-                wpaauthid = 0;
-            printf("WSEC=%02X WPAAUTH=%02X\n", wsecvals[wsecid], wpaauthvals[wpaauthid]);*/
-            //*(vu32*)0xF0005420 &= ~16;
-            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
-            //*(vu32*)0xF000542C |= 1;
-            //*(vu32*)0xF0005400 ^= (1<<23);
-            //*(vu32*)0xF0005400 ^= (1<<19);
-            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
-            //*(vu32*)0xF0005420 ^= (1<<1);
-            //printf("5420 = %08X\n", *(vu32*)0xF0005420);
-        }
-        if (test->ButtonsPressed & BTN_LEFT)
-        {
-            //*(vu32*)0xF0005400 ^= (1<<24);
-            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
-            //mictest();
-        }
-        if (test->ButtonsPressed & BTN_RIGHT)
-        {
-            /**(vu32*)0xF0005404 ^= (1<<7);
-            printf("5404 = %08X\n", *(vu32*)0xF0005404);*/
-            //*(vu32*)0xF0005400 ^= (1<<18);
-            //printf("5400 = %08X\n", *(vu32*)0xF0005400);
-           // mictest2();
-        }
-
-        /**(vu32*)regaddr ^= 0x0100;
-        if (test->ButtonsPressed & BTN_LEFT)
-        {
-            regaddr += 4;
-            *(vu32*)regaddr = 0xC200;
-            printf("toggling register %08X\n", regaddr);
-        }*/
-        /*if (test->ButtonsPressed & BTN_LEFT)
-        {
-            d++;
-            d &= 31;
-            printf("reset bit: %d\n", d);
-        }*/
-        // X offset: min=2 max=C2 mask=7FF
-        // Y offset: min=7 max=1E7?? mask=7FF
-        // F0009404
-        // low / vbl
-        // 0x1FE = 940
-        // 0x208 = 1266
-        // 0x212 = 1593
-        // max = 7FF
-        // step ~= 32.6ns
-        // high: max = 1FF
-        // value less than 0x100 makes vblank a bit longer? (36ns)
-        // 533970 pixels in ~16638ns
-        // 1 pixel in X ns
-/*#define reg 0xF000950C
-#define step 10
-        if (test->ButtonsPressed & BTN_LEFT)
-        {
-            (*(vu32*)reg) -= step;
-            printf("reg=%08X\n", *(vu32*)reg);
-        }
-        if (test->ButtonsPressed & BTN_RIGHT)
-        {
-            (*(vu32*)reg) += step;
-            printf("reg=%08X\n", *(vu32*)reg);
-        }*/
-        // aaagdsrdfdddd
-        if (test->ButtonsPressed & BTN_SYNC)//(BTN_Y | BTN_SYNC))
-        {
-            //resettest(d);
-            AudioAmp_DeInit();
-            //UIC_SetBacklight(0);
-            LCD_DeInit();
-            Wifi_DeInit();
-            WUP_DelayUS(60);
-
-            u8 zarmf = 0;
-            UIC_SendCommand(0x17, &zarmf, 1, NULL, 0);
-            WUP_DelayUS(60);
-
-            u8 zirmf[4] = {1, 0, 0, 0};
-            UIC_SendCommand(0x1B, zirmf, 4, NULL, 0);
-            WUP_DelayUS(60);
-
-            //UIC_SetState(9);
-            UIC_SetState(5);
-            //UIC_SendCommand(0x16, NULL, 0, NULL, 0);
-            /*WUP_DelayUS(60);
-            u8 fark = 44;
-            UIC_SendCommand(0x13, NULL, 0, &fark, 1);
-            printf("fark=%d\n", fark);*/
-            //UIC_SetBacklight(1);
-            *(vu32*)0xF0000410 = 0;
-            *(vu32*)0xF0000420 = 0;
-            DisableIRQ();
-            for (;;);
-        }
-
-        if (__test)
-            ScWifiScan_Update();
-
-        Wifi_Update();
-
-        Video_WaitForVBlank();
-        /*u32 vbl = REG_COUNTUP_VALUE;
-
-        vblendflag = 0;
-        while (!vblendflag) WaitForIRQ();
-        u32 vbl2 = REG_COUNTUP_VALUE;
-
-        u32 vbltime = vbl2 - vbl;
-        u32 frametime = vbl - lastvbl;
-        lastvbl = vbl2;
-        printf("frame: reg=%08X disp=%010d blk=%010d tot=%010d\n", *(vu32*)reg, frametime, vbltime, frametime+vbltime);*/
-
-        // 5E8000 = E0000 * 108 / 16
-
-		/*GFX_WaitForVBlank();
-        u32 derp = lv_task_handler();
-        printf("%d\n", derp);*/
         lv_timer_periodic_handler();
-        //u32 next = lv_timer_handler();
-        //if (next) WUP_DelayMS(next);
 	}
 }
 

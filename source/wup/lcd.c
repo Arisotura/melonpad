@@ -55,6 +55,8 @@ void LCD_Init()
 
 void LCD_DeInit()
 {
+    // turn off LCD backlight
+    // this is required for proper power-down/sleep
     LCD_SetBrightness(-1);
 
     GPIO_SET_OUTPUT_LOW(REG_GPIO_LCD_RESET);

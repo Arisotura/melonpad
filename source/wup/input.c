@@ -39,15 +39,13 @@ void Input_Init()
     else
         memset(TouchCalib, 0, 16); // TODO ??
 
-    // TODO
-    InputData.ButtonsDown = 0;
-    InputData.ButtonsPressed = 0;
-    InputData.ButtonsReleased = 0;
+    memset(&InputData, 0, sizeof(InputData));
     FirstScan = 1;
+    Input_Scan();
 }
 
 
-sInputData* Input_Scan()
+void Input_Scan()
 {
     u8 data[128];
     data[0x00] = 0;
@@ -141,5 +139,12 @@ sInputData* Input_Scan()
         InputData.ButtonsReleased = 0;
     }
 
+    // update audio volume/output
+    Audio_SetVolume(InputData.AudioVolume);
+    Audio_SetOutput((InputData.PowerStatus & PWR_HEADPHONES) ? 1:0);
+}
+
+sInputData* Input_GetData()
+{
     return &InputData;
 }

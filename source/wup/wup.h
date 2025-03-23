@@ -46,6 +46,9 @@ void DisableMMU();
 void CallLoader(u32 arg0);
 
 void WUP_Init();
+void WUP_DeInit();
+
+void WUP_Update();
 
 inline u8 WUP_HardwareType() { return REG_HARDWARE_ID & 0xFF; }
 
