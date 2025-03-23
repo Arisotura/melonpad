@@ -131,7 +131,6 @@ int Wifi_AI_Enumerate()
 
         if ((numMW + numSW) == 0)
         {
-            printf("non-core %08X %08X\n", cia, cib);
             if (coreID == 0x367) // OOB router
             {
                 addrdesc = GetAddrDesc(&eromptr, 0x000, &addrlo, &addrhi, &sizelo, &sizehi);
@@ -158,7 +157,6 @@ int Wifi_AI_Enumerate()
             addrdesc = GetAddrDesc(&eromptr, 0x040, &addrlo, &addrhi, &sizelo, &sizehi);
             if (addrdesc != 0)
             {
-                printf("it's a bridge: %08X\n", addrdesc);
                 isbridge = 1;
             }
             else if ((addrhi != 0) || (sizehi != 0) || (sizelo != 0x1000))
@@ -176,12 +174,6 @@ int Wifi_AI_Enumerate()
         coreinfo->MemSize = sizelo;
         coreinfo->MemBase2 = 0;
         coreinfo->MemSize2 = 0;
-        printf("--- COMPONENT %d (bridge=%d) ---\n", NumCores, isbridge);
-        printf("cia[%d] = %08X\n", NumCores, cia);
-        printf("cib[%d] = %08X\n", NumCores, cib);
-        printf("coreid[%d] = %08X\n", NumCores, coreID);
-        printf("coresba[%d] = %08X\n", NumCores, addrlo);
-        printf("coresba_size[%d] = %08X\n", NumCores, sizelo);
 
         for (int j = 1; ; j++)
         {
@@ -191,8 +183,6 @@ int Wifi_AI_Enumerate()
             {
                 coreinfo->MemBase2 = addrlo;
                 coreinfo->MemSize2 = sizelo;
-                printf("coresba2[%d] = %08X\n", NumCores, addrlo);
-                printf("coresba2_size[%d] = %08X\n", NumCores, sizelo);
             }
         }
 
@@ -202,7 +192,6 @@ int Wifi_AI_Enumerate()
             for (j = 0; ; j++)
             {
                 addrdesc = GetAddrDesc(&eromptr, 0x000 | (i<<8), &addrlo, &addrhi, &sizelo, &sizehi);
-                printf("j=%d desc=%08X\n", j, addrdesc);
                 if (addrdesc == 0) break;
             }
             /*if (j == 0)
@@ -223,7 +212,6 @@ int Wifi_AI_Enumerate()
             if (i == 0)
             {
                 coreinfo->WrapperBase = addrlo;
-                printf("[mw] wrapba[%d] = %08X\n", NumCores, addrlo);
             }
         }
 
@@ -239,7 +227,6 @@ int Wifi_AI_Enumerate()
             if ((numMW == 0) && (i == 0))
             {
                 coreinfo->WrapperBase = addrlo;
-                printf("[sw] wrapba[%d] = %08X\n", NumCores, addrlo);
             }
         }
 
@@ -305,7 +292,6 @@ int Wifi_AI_SetCore(u32 coreid)
         if (core->CoreID == coreid)
         {
             CurCore = core;
-            printf("core: %03X, rev=%d\n", CurCore->CoreID, CurCore->CIb >> 24);
             return 1;
         }
     }

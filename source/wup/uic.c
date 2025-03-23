@@ -358,8 +358,8 @@ void UIC_WaitWifiReady()
     {
         u8 ready = 0;
         UIC_SendCommand(0x13, NULL, 0, &ready, 1);
-        if (ready) return;
-
         WUP_DelayMS(1);
+
+        if (ready == 1) return;
     }
 }

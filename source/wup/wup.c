@@ -220,12 +220,14 @@ void WUP_Init()
     AudioAmp_Init();
     Audio_Init();
 
-    //SDIO_Init();
-
     Input_Init();
 
     // setup rumble GPIO (checkme)
     REG_GPIO_RUMBLE = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
+
+    UIC_WaitWifiReady();
+    SDIO_Init();
+    Wifi_Init();
 }
 
 

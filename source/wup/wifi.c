@@ -28,9 +28,19 @@
 #define READ32BE(buf, off)  ((buf)[(off)+3] | ((buf)[(off)+2] << 8) | ((buf)[(off)+1] << 16) | ((buf)[(off)] << 24))
 
 
+#define State_Idle      0
+#define State_Scanning  1
+#define State_Joining   2
+#define State_Joined    3
+
+static u8 ClkEnable;
+static u8 State;
+
 static u32 RAMSize;
 
 static u8 MACAddr[6];
+
+static volatile u8 CardIRQFlag;
 
 #define Flag_RxMail     (1<<0)
 #define Flag_RxCtl      (1<<1)
@@ -40,7 +50,7 @@ static u8 MACAddr[6];
 static volatile u8 TxSeqno;
 static volatile u8 TxMax;
 static u16 TxCtlId;
-static u8 TxBuffer[4096];
+static u8 TxBuffer[4096];// __attribute__((aligned(16)));
 
 static volatile u8 RxFlags;
 static u32 RxMail;
@@ -59,12 +69,10 @@ typedef struct sPacket
 sPacket* PktQueueHead;
 sPacket* PktQueueTail;
 
-static u8 Scanning;
 static fnScanCb ScanCB;
 static sScanInfo* ScanList;
 static int ScanNum;
 
-static u8 Joining;
 static u8 JoinOpen;
 static fnJoinCb JoinCB;
 static u32 JoinStartTimestamp;
@@ -78,6 +86,7 @@ int Wifi_InitIoctls();
 
 void Wifi_ResetRxFlags(u8 flags);
 void Wifi_WaitForRx(u8 flags);
+void Wifi_CheckRx();
 
 int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u32 len_out);
 int Wifi_GetVar(char* var, u8* data, u32 len);
@@ -92,19 +101,18 @@ err_t NetIfInput(struct pbuf* p, struct netif* inp);
 
 int Wifi_Init()
 {
-    printf("wifi init\n");
+    CardIRQFlag = 0;
+    State = State_Idle;
 
     memset(MACAddr, 0, sizeof(MACAddr));
 
     PktQueueHead = NULL;
     PktQueueTail = NULL;
 
-    Scanning = 0;
     ScanCB = NULL;
     ScanList = NULL;
     ScanNum = 0;
 
-    Joining = 0;
     JoinOpen = 0;
     JoinCB = NULL;
     JoinStartTimestamp = 0;
@@ -208,7 +216,7 @@ int Wifi_Init()
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
     TxSeqno = 0xFF;
-    TxMax = 0;
+    TxMax = 0xFF;
     TxCtlId = 1;
     RxFlags = 0;
     SDIO_EnableCardIRQ();
@@ -224,7 +232,7 @@ int Wifi_Init()
     netif_set_default(&NetIf);
     netif_set_up(&NetIf);
 
-    SDIO_SetClocks(0, 0);
+    Wifi_SetClkEnable(0);
     printf("Wifi: ready to go\n");
     return 1;
 }
@@ -261,6 +269,20 @@ printf("22\n");*/
         SDIO_WriteCardRegs(1, 0x10009, 1, (u8*)&regval);
     }
     printf("44\n");
+}
+
+
+void Wifi_SetClkEnable(int enable)
+{
+    if (enable == ClkEnable)
+        return;
+
+    if (enable)
+        SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
+    else
+        SDIO_SetClocks(0, 0);
+
+    ClkEnable = enable;
 }
 
 
@@ -553,7 +575,8 @@ static void Wifi_WaitTXReady()
         if ((credit != 0) && (!(credit & 0x80)))
             break;
 
-        WaitForIRQ();
+        while (!CardIRQFlag) WaitForIRQ();
+        Wifi_CheckRx();
     }
 }
 
@@ -599,7 +622,7 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
     Wifi_WaitForRx(Flag_RxCtl);
 
     {
-        int irq = DisableIRQ();
+        //int irq = DisableIRQ();
 
         u8 replyoffset = RxCtlBuffer[7];
         //printf("len=%04X cpl=%04X off=%02X\n", *(u16*)&RxCtlBuffer[0], *(u16*)&RxCtlBuffer[2], replyoffset);
@@ -633,7 +656,7 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
         if (data_out)
             memcpy(data_out, &RxCtlBuffer[replyoffset+16], replylen);
 
-        RestoreIRQ(irq);
+        //RestoreIRQ(irq);
     }
 
     return ret;
@@ -670,34 +693,6 @@ int Wifi_SetVar(char* var, u8* data, u32 len)
 }
 
 
-/*int Wifi_SendPacket(u8* data_in, u32 len_in)
-{
-    int ret = 1;
-
-    u8* buf = &TxBuffer[0];
-
-    int totallen = len_in;
-    totallen += 18;
-
-    *(u16*)&buf[0] = totallen;
-    *(u16*)&buf[2] = ~totallen;
-    buf[4] = TxSeqno++;
-    buf[5] = 0x02; // channel (data)
-    buf[6] = 0;
-    buf[7] = 14; // offset to data
-    *(u32*)&buf[8] = 0; // ??
-    *(u16*)&buf[14] = 0x20; // ??? must be 0x10 or 0x20
-    *(u16*)&buf[16] = 0;
-    memcpy(&buf[18], data_in, len_in);
-
-    // send frame
-    u16 len_rounded = (totallen + 0x3F) & ~0x3F;
-    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
-
-    return ret;
-}*/
-
-
 void Wifi_ResetRxFlags(u8 flags)
 {
     RxFlags &= ~flags;
@@ -707,21 +702,20 @@ void Wifi_WaitForRx(u8 flags)
 {
     while (!(RxFlags & flags))
     {
-        WaitForIRQ();
+        while (!CardIRQFlag) WaitForIRQ();
+        Wifi_CheckRx();
     }
 }
 
 void Wifi_RxHostMail()
 {
-    u32 base = Wifi_AI_GetCoreMemBase();
-    SDIO_ReadF1Memory(base + 0x04C, (u8*)&RxMail, 4);
-    u32 ack = (1<<1);
-    SDIO_WriteF1Memory(base + 0x040, (u8*)&ack, 4);
+    RxMail = Wifi_AI_ReadCoreMem(0x04C);
+    Wifi_AI_WriteCoreMem(0x040, (1<<1));
 
     RxFlags |= Flag_RxMail;
 }
 
-void Wifi_RxData()
+int Wifi_RxData()
 {
     // read header
     u8 header[64];
@@ -729,13 +723,14 @@ void Wifi_RxData()
 
     u16 len = *(u16*)&header[0];
     u16 not_len = *(u16*)&header[2];
-    if (len < 12) return;
-    if (len != (u16)(~not_len)) return;
+    if (!(len | not_len)) return 0;
+    if (len < 12) return 0;
+    if (len != (u16)(~not_len)) return 0;
 
     u8 seqno = header[4];
     u8 chan = header[5];
     u8 dataoffset = header[7];
-    if (dataoffset < 12) return;
+    if (dataoffset < 12) return 0;
 
     u8 txmax = header[9];
     if ((u8)(txmax - TxSeqno) > 0x40)
@@ -745,12 +740,19 @@ void Wifi_RxData()
     }
     TxMax = txmax;
 
+    if (len <= dataoffset)
+    {
+        // dummy message, serves to give TX credits
+        return 1;
+    }
+
+    u16 len_rounded = (len + 0x3F) & ~0x3F;
+
     if (chan == 0)
     {
         // control channel
 
-        u16 len_rounded = (len + 0x3F) & ~0x3F;
-        if (len_rounded > 4096) return;
+        if (len_rounded > 4096) return 0;
 
         memcpy(RxCtlBuffer, header, 64);
         if (len_rounded > 64)
@@ -763,15 +765,13 @@ void Wifi_RxData()
         // 1 = event channel
         // 2 = data channel
 
-        u16 len_rounded = (len + 0x3F) & ~0x3F;
-
         int pkt_len = OFFSETOF(sPacket, Data) + len_rounded;
         sPacket* pkt = (sPacket*)malloc(pkt_len);
         if (!pkt)
         {
             // TODO signal the error somehow
-            //_write(1, "FAIL1\n", 6);
-            return;
+            printf("wifi: out of memory!\n");
+            return 0;
         }
 
         pkt->Next = NULL;
@@ -795,30 +795,51 @@ void Wifi_RxData()
     else
     {
         // ???
+        return 0;
     }
+
+    return 1;
 }
 
 void Wifi_CardIRQ()
 {
-    u32 irqstatus = 0;
-    u32 base = Wifi_AI_GetCoreMemBase();
-    SDIO_ReadF1Memory(base + 0x020, (u8*)&irqstatus, 4);
-    if (irqstatus == 0) return;
-    SDIO_WriteF1Memory(base + 0x020, (u8*)&irqstatus, 4); // ack
+    SDIO_DisableCardIRQ();
+    CardIRQFlag = 1;
+}
 
-    if (irqstatus & (1<<7)) Wifi_RxHostMail();
-    if (irqstatus & (1<<6)) Wifi_RxData();
+void Wifi_CheckRx()
+{
+    if (!ClkEnable)
+        Wifi_SetClkEnable(1);
+
+    CardIRQFlag = 0;
+
+    u32 irqstatus = Wifi_AI_ReadCoreMem(0x020);
+    Wifi_AI_WriteCoreMem(0x020, irqstatus); // ack
+
+    if (irqstatus & (1<<7))
+    {
+        Wifi_RxHostMail();
+    }
+    if (irqstatus & (1<<6))
+    {
+        int res;
+        do res = Wifi_RxData();
+        while (res);
+    }
+
+    SDIO_EnableCardIRQ();
 }
 
 
 sPacket* Wifi_ReadRxPacket()
 {
-    int irq = DisableIRQ();
+    //int irq = DisableIRQ();
 
     sPacket* pkt = PktQueueHead;
     if (!pkt)
     {
-        RestoreIRQ(irq);
+        //RestoreIRQ(irq);
         return NULL;
     }
 
@@ -826,7 +847,7 @@ sPacket* Wifi_ReadRxPacket()
     if (!PktQueueHead)
         PktQueueTail = NULL;
 
-    RestoreIRQ(irq);
+    //RestoreIRQ(irq);
     return pkt;
 }
 
@@ -837,11 +858,12 @@ int Wifi_StartScan(fnScanCb callback)
 {
     int res;
 
-    if (Scanning) return 0;
+    if (State != State_Idle)
+        return 0;
 
     Wifi_CleanupScanList();
 
-    SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
+    Wifi_SetClkEnable(1);
 
     u8 scanparams[72];
     memset(scanparams, 0, sizeof(scanparams));
@@ -862,7 +884,7 @@ int Wifi_StartScan(fnScanCb callback)
     res = Wifi_SetVar("escan", scanparams, sizeof(scanparams));
     if (!res) return 0;
 
-    Scanning = 1;
+    State = State_Scanning;
     ScanCB = callback;
     return 1;
 }
@@ -1190,9 +1212,10 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
     u32 var;
     int res;
 
-    if (Joining) return 0;
+    if (State != State_Idle)
+        return 0;
 
-    SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
+    Wifi_SetClkEnable(1);
 
     // set it to 0 for open system auth, 1 for shared key
     var = 0;
@@ -1239,7 +1262,7 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
     res = Wifi_SendIoctl(WLC_SET_SSID, 2, ssiddata, 42, NULL, 0);
     if (!res) return 0;
 
-    Joining = 1;
+    State = State_Joining;
     JoinOpen = (auth == WIFI_AUTH_OPEN);
     JoinCB = callback;
     JoinStartTimestamp = WUP_GetTicks();
@@ -1267,7 +1290,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
     switch (type)
     {
     case WLC_E_SET_SSID:
-        if (Joining)
+        if (State == State_Joining)
         {
             // for an open network, this event with status=0 would indicate a successful connection
             // however, for a secure network, it may be followed by a disconnect
@@ -1278,7 +1301,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
                 {
                     if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
                     JoinCB = NULL;
-                    Joining = 0;
+                    State = State_Joined;
 
                     //dhcp_start(&NetIf);
                 }
@@ -1293,7 +1316,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
 
             if (JoinCB) JoinCB(stat);
             JoinCB = NULL;
-            Joining = 0;
+            State = State_Idle;
         }
         break;
 
@@ -1312,16 +1335,16 @@ static void Wifi_HandleEvent(sPacket* pkt)
         break;
 
     case WLC_E_PRUNE:
-        if (Joining)
+        if (State == State_Joining)
         {
             if (JoinCB) JoinCB(WIFI_JOIN_BADSEC);
             JoinCB = NULL;
-            Joining = 0;
+            State = State_Idle;
         }
         break;
 
     case WLC_E_PSK_SUP:
-        if (Joining && (!JoinOpen))
+        if ((State == State_Joining) && (!JoinOpen))
         {
             int stat;
             if (status == 6) // unsolicited
@@ -1333,7 +1356,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
 
             if (JoinCB) JoinCB(stat);
             JoinCB = NULL;
-            Joining = 0;
+            State = (stat == WIFI_JOIN_SUCCESS) ? State_Joined : State_Idle;
 
             //if (stat == WIFI_JOIN_SUCCESS)
             //    dhcp_start(&NetIf);
@@ -1341,7 +1364,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
         break;
 
     case WLC_E_ESCAN_RESULT:
-        if (Scanning)
+        if (State == State_Scanning)
         {
             if (pkt->Length < 0x58) break;
 
@@ -1365,7 +1388,7 @@ static void Wifi_HandleEvent(sPacket* pkt)
             {
                 // empty frame: scan end
 
-                Scanning = 0;
+                State = State_Idle;
                 if (ScanCB) ScanCB(ScanList, ScanNum);
                 ScanCB = NULL;
             }
@@ -1421,14 +1444,14 @@ static void Wifi_HandleDataFrame(sPacket* pkt)
 int bib = 0;
 void Wifi_Update()
 {
-    if (Joining)
+    if (State == State_Joining)
     {
         u32 time = WUP_GetTicks() - JoinStartTimestamp;
         if (time >= 10000)
         {
             if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
             JoinCB = NULL;
-            Joining = 0;
+            State = State_Idle;
         }
     }
 
@@ -1440,20 +1463,14 @@ void Wifi_Update()
         bib = 1;
     }
 
+    if (CardIRQFlag)
+        Wifi_CheckRx();
+
     if (RxFlags & (Flag_RxEvent | Flag_RxData))
     {
         sPacket* pkt;
         while ((pkt = Wifi_ReadRxPacket()))
         {
-            u16 len = READ16LE(pkt->Data, 0);
-            u8 dataoffset = pkt->Data[7];
-            if (len <= dataoffset)
-            {
-                // dummy frame, used to give out TX credits
-                free(pkt);
-                continue;
-            }
-
             u8 chan = pkt->Data[5];
             if (chan == 1)
             {
@@ -1469,6 +1486,9 @@ void Wifi_Update()
 
         Wifi_ResetRxFlags(Flag_RxEvent | Flag_RxData);
     }
+
+    if (ClkEnable && (State == State_Idle))
+        Wifi_SetClkEnable(0);
 }
 
 err_t NetIfOutput(struct netif* netif, struct pbuf* p);

@@ -45,6 +45,8 @@ typedef void (*fnJoinCb)(int status);
 int Wifi_Init();
 void Wifi_DeInit();
 
+void Wifi_SetClkEnable(int enable);
+
 int Wifi_UploadFirmware();
 
 void Wifi_WaitForRx(u8 flags);

@@ -478,20 +478,6 @@ extern u32 irqlog[16];
 void main()
 {
 	u32 i;
-#if 0
-	// setup GPIO
-	*(vu32*)0xF0005114 = 0xC200;
-
-    // clear framebuffer (TODO more nicely)
-    {
-        u16* fb = (u16*)0x300000;
-        for (i = 0; i < 854*480; i++)
-            fb[i] = 0;
-    }
-
-    vblendflag = 0;
-    WUP_SetIRQHandler(0x15, vbl_end, NULL, 0);
-#endif
 
     int fblen = 854 * 480 * sizeof(u16);
     Framebuffer = (u16*)memalign(16, fblen);
@@ -529,69 +515,6 @@ void main()
     ScWifiScan_Init();
 
     //Console_OpenDefault();
-
-
-    printf("hardware: %08X\n", *(vu32*)0xF0000000);
-    printf("SD caps1: %08X\n", *(vu32*)0xE0010040);
-    printf("SD caps2: %08X\n", *(vu32*)0xE0010044);
-    printf("SD version: %04X\n", *(vu16*)0xE00100FE);
-    printf("UIC: %02X, %d\n", *(vu8*)0x3FFFFC, UIC_GetState());
-
-
-
-    //printf("derp=%02X %02X\n", derp[0], derp[1]);
-
-
-
-
-    for (;;)
-    {
-        u8 fark;
-        UIC_SendCommand(0x13, NULL, 0, &fark, 1);
-        WUP_DelayMS(5);
-        if (fark != 1) continue;
-        printf("UIC13=%02X\n", fark);
-        break;
-    }
-    printf("UIC came up\n");
-
-#if 1
-    // 69EF30B0
-    // 01101001 11101111 00110000 10110000
-    // TODO move this to WUP_Init()
-    int a = SDIO_Init();
-    //uictest();
-    int b = Wifi_Init();
-    printf("wifi init res=%d/%d\n", a, b);
-    //uictest();
-
-    /*WUP_DelayMS(2000);
-    //for (;;)
-    {
-        //Wifi_StartScan(1);
-        //Wifi_StartScan2(1);
-        //WUP_DelayMS(10);
-        WUP_DelayMS(1000);
-    }
-    //Wifi_StartScan(1);
-    Wifi_JoinNetwork();
-    //Wifi_JoinNetwork2();
-    printf("joined network, maybe\n");*/
-
-    printf("press A to try joining\n");
-    printf("press B to scan for networks\n");
-    printf("press X to send test packet\n");
-    printf("press UP to change WSEC, DOWN to change WPAAUTH\n");
-#endif
-
-    //clk_testbench();
-    //shit_testbench();
-    //flash_testbench();
-    //flash_testbench2();
-    //dma_testbench();
-
-    //streaminit();
-    //WUP_SetIRQHandler(0x1E, irq1E, NULL, 0);
 
 
     int frame = 0;

@@ -4,7 +4,7 @@
 .text
 
 .arm
-.align 4
+.align 2
 
 .global GetCP15Reg
 .type GetCP15Reg, %function
@@ -28,3 +28,5 @@ GetCP15Reg:
     nop
     mrc p15, 0, r0, c0, c0, 0
     bx lr
+
+

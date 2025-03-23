@@ -14,10 +14,16 @@ static u32 SD_CISPtr[7];
 
 static u32 SD_F1Base;
 
+static volatile u16 IRQFlags;
+static volatile u16 ErrorFlags;
+
 
 int SDIO_Init()
 {
     SD_Caps = REG_SD_CAPS;
+
+    IRQFlags = 0;
+    ErrorFlags = 0;
 
     // reset host
     REG_SD_SOFTRESET = SD_RESET_ALL;
@@ -27,7 +33,14 @@ int SDIO_Init()
     REG_SD_EIRQSTATUS = 0x0FFF;
     REG_SD_IRQSTATUSENABLE = 0x01FF;
     REG_SD_EIRQSTATUSENABLE = 0x0FFF;
-    REG_SD_IRQSIGNALENABLE = 0;
+    REG_SD_IRQSIGNALENABLE =
+        SD_IRQ_CMD_DONE |
+        SD_IRQ_TRANSFER_DONE |
+        SD_IRQ_READ_READY |
+        SD_IRQ_WRITE_READY |
+        SD_IRQ_DMA |
+        SD_IRQ_ERROR;
+    REG_SD_EIRQSIGNALENABLE = 0x0FFF;
 
     WUP_SetIRQHandler(IRQ_SDIO, SDIO_IRQHandler, NULL, 0);
 
@@ -140,23 +153,59 @@ void SDIO_DisableCardIRQ()
 
 void SDIO_IRQHandler(int irq, void* userdata)
 {
-    //for (;;)
+    u16 irqreg = REG_SD_IRQSTATUS & REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE;
+    if (!irqreg) return;
+
+    if (irqreg & SD_IRQ_CARD_IRQ)
     {
-        u16 irq = REG_SD_IRQSTATUS & REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE;
-        if (!irq) return;
+        // for the card IRQ, it is required to disable it in REG_SD_IRQSTATUSENABLE
+        // for the flag to go to zero
+        u16 oldenable = REG_SD_IRQSTATUSENABLE;
+        REG_SD_IRQSTATUSENABLE = oldenable & ~SD_IRQ_CARD_IRQ;
 
-        if (irq & SD_IRQ_CARD_IRQ)
+        Wifi_CardIRQ();
+
+        REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
+        REG_SD_IRQSTATUSENABLE = oldenable;
+        irqreg &= ~SD_IRQ_CARD_IRQ;
+    }
+
+    if (irqreg & SD_IRQ_DMA)
+    {
+        // DMA hit a boundary, start it again if needed
+        REG_SD_IRQSTATUS = SD_IRQ_DMA;
+
+        if (!(irqreg & SD_IRQ_TRANSFER_DONE))
+            REG_SD_SYSADDR = REG_SD_SYSADDR;
+
+        irqreg &= ~SD_IRQ_DMA;
+    }
+
+    if (irqreg)
+    {
+        REG_SD_IRQSTATUS = irqreg;
+        IRQFlags |= irqreg;
+    }
+}
+
+int SDIO_WaitForIRQ(u16 irq)
+{
+    for (;;)
+    {
+        if (IRQFlags & SD_IRQ_ERROR)
         {
-            // for the card IRQ, it is required to disable it in REG_SD_IRQSTATUSENABLE
-            // for the flag to go to zero
-            u16 oldenable = REG_SD_IRQSTATUSENABLE;
-            REG_SD_IRQSTATUSENABLE = oldenable & ~SD_IRQ_CARD_IRQ;
-
-            Wifi_CardIRQ();
-
-            REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
-            REG_SD_IRQSTATUSENABLE = oldenable;
+            IRQFlags &= ~SD_IRQ_ERROR;
+            ErrorFlags = REG_SD_EIRQSTATUS;
+            return 0;
         }
+
+        if (IRQFlags & irq)
+        {
+            IRQFlags &= ~irq;
+            return 1;
+        }
+
+        WaitForIRQ();
     }
 }
 
@@ -272,12 +321,18 @@ int SDIO_SetClocks(int sdclk, int htclk)
 
 int SDIO_SendCommand(u32 cmd, u32 arg)
 {
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     int retries = 100;
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
         if (retries <= 0)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
     }
 
     u16 cmdreg = SD_CMD_NUM(cmd);
@@ -322,26 +377,21 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
 
     default:
         printf("SDIO: unknown command %d\n", cmd);
+        REG_SD_IRQSIGNALENABLE = oldirq;
         return 0;
     }
 
+    IRQFlags = 0;
     REG_SD_ARG = arg;
     REG_SD_COMMAND = cmdreg;
 
-    // TODO wait for IRQ
-    for (;;)
+    if (!SDIO_WaitForIRQ(SD_IRQ_CMD_DONE))
     {
-        u16 irq = REG_SD_IRQSTATUS;
-        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_CMD_DONE)))
-            continue;
-
-        if (irq & SD_IRQ_ERROR)
-            return 0;
-
-        REG_SD_IRQSTATUS = SD_IRQ_CMD_DONE;
-        break;
+        REG_SD_IRQSIGNALENABLE = oldirq;
+        return 0;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
@@ -372,10 +422,17 @@ int SDIO_GetOCR(u32 arg, u32* resp)
 
 int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
 {
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     for (int i = 0; i < len; i++)
     {
         u32 cmdarg = (0 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9);
-        if (!SDIO_SendCommand(52, cmdarg)) return 0;
+        if (!SDIO_SendCommand(52, cmdarg))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
+            return 0;
+        }
 
         u32 resp;
         SDIO_ReadResponse(&resp, 1);
@@ -386,15 +443,23 @@ int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
         addr++;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
 int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
 {
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     for (int i = 0; i < len; i++)
     {
         u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9) | val[i];
-        if (!SDIO_SendCommand(52, cmdarg)) return 0;
+        if (!SDIO_SendCommand(52, cmdarg))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
+            return 0;
+        }
 
         u32 resp;
         SDIO_ReadResponse(&resp, 1);
@@ -404,6 +469,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
         addr++;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
@@ -411,12 +477,18 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     int retries = 100;
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
         if (retries <= 0)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
     }
 
     u32 cmdarg = (0 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9);
@@ -430,12 +502,18 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (len >= blocksize)
     {
         if (len & (blocksize-1))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         //int blocknum = len >> ((func == 2) ? 9 : 6);
         int blocknum = len >> 6;
         if (blocknum > 0x200)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         cmdarg |= (1<<27); // block mode
 
@@ -465,7 +543,10 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     {
         retries--;
         if (retries <= 0)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
     }
 
     if (xfermode & (1<<0))
@@ -477,27 +558,25 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     REG_SD_TRANSFERMODE = xfermode;
 
     if (!SDIO_SendCommand(53, cmdarg))
+    {
+        REG_SD_IRQSIGNALENABLE = oldirq;
         return 0;
+    }
 
     u32 resp;
     SDIO_ReadResponse(&resp, 1);
     if ((resp & 0xFF00) != 0x1000)
+    {
+        REG_SD_IRQSIGNALENABLE = oldirq;
         return 0;
+    }
 
     if (!(xfermode & (1<<0)))
     {
-        // TODO wait for IRQ
-        for (;;)
+        if (!SDIO_WaitForIRQ(SD_IRQ_READ_READY))
         {
-            u16 irq = REG_SD_IRQSTATUS;
-            if (!(irq & (SD_IRQ_ERROR | SD_IRQ_READ_READY)))
-                continue;
-
-            if (irq & SD_IRQ_ERROR)
-                return 0;
-
-            REG_SD_IRQSTATUS = SD_IRQ_READ_READY;
-            break;
+            REG_SD_IRQSIGNALENABLE = oldirq;
+            return 0;
         }
 
         int words = len >> 2;
@@ -532,23 +611,16 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             data[i*4+2] = REG_SD_DATAPORT8;
     }
 
-    // TODO wait for IRQ
-    for (;;)
+    if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
     {
-        u16 irq = REG_SD_IRQSTATUS;
-        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
-            continue;
-
-        if (irq & SD_IRQ_ERROR)
-            return 0;
-
-        REG_SD_IRQSTATUS = SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA;
-        break;
+        REG_SD_IRQSIGNALENABLE = oldirq;
+        return 0;
     }
 
     if (xfermode & (1<<0))
         DC_InvalidateRange(data, len);
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
@@ -556,12 +628,18 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     int retries = 100;
     while (REG_SD_PRESENTSTATE & SD_PRES_CMD_INHIBIT)
     {
         retries--;
         if (retries <= 0)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
     }
 
     u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9);
@@ -575,12 +653,18 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (len >= blocksize)
     {
         if (len & (blocksize-1))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         //int blocknum = len >> ((func == 2) ? 9 : 6);
         int blocknum = len >> 6;
         if (blocknum > 0x200)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         cmdarg |= (1<<27); // block mode
 
@@ -610,7 +694,10 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     {
         retries--;
         if (retries <= 0)
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
     }
 
     if (xfermode & (1<<0))
@@ -622,27 +709,25 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     REG_SD_TRANSFERMODE = xfermode;
 
     if (!SDIO_SendCommand(53, cmdarg))
+    {
+        REG_SD_IRQSIGNALENABLE = oldirq;
         return 0;
+    }
 
     u32 resp;
     SDIO_ReadResponse(&resp, 1);
     if ((resp & 0xFF00) != 0x1000)
+    {
+        REG_SD_IRQSIGNALENABLE = oldirq;
         return 0;
+    }
 
     if (!(xfermode & (1<<0)))
     {
-        // TODO wait for IRQ
-        for (;;)
+        if (!SDIO_WaitForIRQ(SD_IRQ_WRITE_READY))
         {
-            u16 irq = REG_SD_IRQSTATUS;
-            if (!(irq & (SD_IRQ_ERROR | SD_IRQ_WRITE_READY)))
-                continue;
-
-            if (irq & SD_IRQ_ERROR)
-                return 0;
-
-            REG_SD_IRQSTATUS = SD_IRQ_WRITE_READY;
-            break;
+            REG_SD_IRQSIGNALENABLE = oldirq;
+            return 0;
         }
 
         int words = len >> 2;
@@ -680,20 +765,13 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             REG_SD_DATAPORT8 = data[i*4+2];
     }
 
-    // TODO wait for IRQ
-    for (;;)
+    if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
     {
-        u16 irq = REG_SD_IRQSTATUS;
-        if (!(irq & (SD_IRQ_ERROR | SD_IRQ_TRANSFER_DONE)))
-            continue;
-
-        if (irq & SD_IRQ_ERROR)
-            return 0;
-
-        REG_SD_IRQSTATUS = SD_IRQ_TRANSFER_DONE | SD_IRQ_DMA;
-        break;
+        REG_SD_IRQSIGNALENABLE = oldirq;
+        return 0;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
@@ -736,6 +814,9 @@ int SDIO_SetF1Base(u32 addr)
 
 int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
 {
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     for (int i = 0; i < len; )
     {
         int chunk = len - i;
@@ -746,21 +827,31 @@ int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
             chunk &= ~0x3F;
 
         if (!SDIO_SetF1Base(addr))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         if (!SDIO_ReadCardData(1, sdaddr | 0x8000, data, chunk, 1))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         i += chunk;
         addr += chunk;
         data += chunk;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
 
 int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
 {
+    u16 oldirq = REG_SD_IRQSIGNALENABLE;
+    REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+
     for (int i = 0; i < len; )
     {
         int chunk = len - i;
@@ -771,15 +862,22 @@ int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
             chunk &= ~0x3F;
 
         if (!SDIO_SetF1Base(addr))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         if (!SDIO_WriteCardData(1, sdaddr | 0x8000, data, chunk, 1))
+        {
+            REG_SD_IRQSIGNALENABLE = oldirq;
             return 0;
+        }
 
         i += chunk;
         addr += chunk;
         data += chunk;
     }
 
+    REG_SD_IRQSIGNALENABLE = oldirq;
     return 1;
 }
