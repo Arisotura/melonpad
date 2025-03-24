@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "sc_boot_menu.h"
+#include "sc_hardware_info.h"
 
 sScreen scBootMenu =
 {
@@ -21,6 +22,11 @@ static lv_obj_t* Screen;
 //
 
 #define ObjDelete(obj) do { if (obj) lv_obj_delete(obj); obj = NULL; } while (0)
+
+static void OnHardwareInfo(lv_event_t* event)
+{
+    ScOpen(&scHardwareInfo);
+}
 
 void ScBootMenu_Open()
 {
@@ -57,15 +63,6 @@ void ScBootMenu_Open()
     lv_obj_set_size(list2, lv_pct(30), lv_pct(100));
     lv_obj_align(list2, LV_ALIGN_TOP_RIGHT, 0, 0);
 
-    // wifi boot
-    // install app
-    // -
-    // wifi settings
-    // boot settings?
-    // dump FLASH
-    // update
-    // hardware info
-
     lv_list_add_text(list2, "App management");
     btn = lv_list_add_button(list2, LV_SYMBOL_DOWNLOAD, "Install app");
     btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Wifi boot");
@@ -75,14 +72,7 @@ void ScBootMenu_Open()
     btn = lv_list_add_button(list2, LV_SYMBOL_UPLOAD, "Dump FLASH");
     btn = lv_list_add_button(list2, LV_SYMBOL_UP, "Update");
     btn = lv_list_add_button(list2, LV_SYMBOL_LIST, "Hardware info");
-
-    /*lv_list_add_text(list2, "Options");
-    btn = lv_list_add_button(list2, LV_SYMBOL_SETTINGS, "Boot options");
-    btn = lv_list_add_button(list2, LV_SYMBOL_HOME, "Hardware info");
-    btn = lv_list_add_button(list2, LV_SYMBOL_POWER, "Power to the people");
-    lv_list_add_text(list2, "Connectivity");
-    btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Connect to wifi");
-    btn = lv_list_add_button(list2, LV_SYMBOL_BLUETOOTH, "Connect to IR");*/
+    lv_obj_add_event_cb(btn, OnHardwareInfo, LV_EVENT_CLICKED, NULL);
 }
 
 void ScBootMenu_Close()

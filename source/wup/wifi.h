@@ -45,6 +45,8 @@ typedef void (*fnJoinCb)(int status);
 int Wifi_Init();
 void Wifi_DeInit();
 
+void Wifi_GetMACAddr(u8* addr);
+
 void Wifi_SetClkEnable(int enable);
 
 int Wifi_UploadFirmware();

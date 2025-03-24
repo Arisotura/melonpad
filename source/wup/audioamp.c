@@ -207,6 +207,12 @@ void AudioAmp_DeInit()
 }
 
 
+int AudioAmp_GetType()
+{
+    return AAmpType;
+}
+
+
 u8 AudioAmp_ReadReg(u8 reg)
 {
     I2C_Start(I2C_BUS_AUDIO_AMP);

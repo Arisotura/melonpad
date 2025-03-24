@@ -272,6 +272,12 @@ printf("22\n");*/
 }
 
 
+void Wifi_GetMACAddr(u8* addr)
+{
+    memcpy(addr, MACAddr, 6);
+}
+
+
 void Wifi_SetClkEnable(int enable)
 {
     if (enable == ClkEnable)

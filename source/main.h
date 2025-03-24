@@ -17,6 +17,10 @@ typedef struct sScreen
 
 } sScreen;
 
+void ScOpen(sScreen* sc);
+void ScDoCloseCurrent();
+void ScCloseCurrent();
 lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title);
+lv_obj_t* ScAddButtonPane(lv_obj_t* screen);
 
 #endif
