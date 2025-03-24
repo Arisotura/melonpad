@@ -306,7 +306,9 @@ lv_obj_t* ScAddButtonPane(lv_obj_t* screen)
 
 void main()
 {
-	u32 i;
+    // set VMatch positions to fire every ~5.5ms
+    int vmatchpos[3] = {8, 178, 348};
+    Video_SetVMatchPositions(vmatchpos, 3);
 
     int fblen = 854 * 480 * sizeof(u16);
     Framebuffer = (u16*)memalign(16, fblen);
@@ -380,8 +382,6 @@ void main()
             ScDoCloseCurrent();
 
         lv_timer_periodic_handler();
+        Video_WaitForVMatch();
 	}
 }
-
-
-

@@ -2,17 +2,15 @@
 
 
 // GFX TODO
-// * framebuffer management
-// * support different pixel formats
 // * support different resolutions/refresh rates?
-// * use DMA for blitting
 // * double buffering?
 
 
 static volatile u8 IsVBlank;
-static volatile u8 VBlankFlag;
+static volatile u8 IRQFlag;
 static void VBlankIRQ(int irq, void* userdata);
 static void VBlankEndIRQ(int irq, void* userdata);
+static void VMatchIRQ(int irq, void* userdata);
 
 
 void Video_Init()
@@ -59,40 +57,74 @@ void Video_Init()
     REG_LCD_VTIMING = (434 << 16) | 510;
     REG_LCD_UNK0C = 8;
 
-    // setup IRQ 0x1E with a 180 Hz frequency
-    REG_VCOUNT_MATCH(0) = 8;
-    REG_VCOUNT_MATCH(1) = 178;
-    REG_VCOUNT_MATCH(2) = 348;
-    REG_VCOUNT_MATCH(3) = 0x7FF; // disable
+    REG_VCOUNT_MATCH(0) = 0x7FF;
+    REG_VCOUNT_MATCH(1) = 0x7FF;
+    REG_VCOUNT_MATCH(2) = 0x7FF;
+    REG_VCOUNT_MATCH(3) = 0x7FF;
 
     IsVBlank = 0;
-    VBlankFlag = 0;
+    IRQFlag = 0;
     WUP_SetIRQHandler(IRQ_VBLANK_END, VBlankEndIRQ, NULL, 0);
     WUP_SetIRQHandler(IRQ_VBLANK, VBlankIRQ, NULL, 0);
+    WUP_SetIRQHandler(IRQ_VMATCH, VMatchIRQ, NULL, 0);
 }
 
 
 static void VBlankIRQ(int irq, void* userdata)
 {
     IsVBlank = 1;
-    VBlankFlag = 1;
+    IRQFlag |= (1<<0);
 }
 
 static void VBlankEndIRQ(int irq, void* userdata)
 {
     IsVBlank = 0;
+    IRQFlag |= (1<<1);
+}
+
+static void VMatchIRQ(int irq, void* userdata)
+{
+    IRQFlag |= (1<<2);
 }
 
 void Video_WaitForVBlank()
 {
-    VBlankFlag = 0;
-    while (!VBlankFlag)
+    IRQFlag &= ~(1<<0);
+    while (!(IRQFlag & (1<<0)))
         WaitForIRQ();
+}
+
+void Video_WaitForVBlankEnd()
+{
+    IRQFlag &= ~(1<<1);
+    while (!(IRQFlag & (1<<1)))
+        WaitForIRQ();
+}
+
+void Video_WaitForVMatch()
+{
+    IRQFlag &= ~(1<<2);
+    while (!(IRQFlag & (1<<2)))
+        WaitForIRQ();
+}
+
+int Video_GetVCount()
+{
+    return REG_LCD_VCOUNT;
 }
 
 int Video_IsVBlank()
 {
     return IsVBlank;
+}
+
+void Video_SetVMatchPositions(int* pos, int num)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        int p = (i < num) ? pos[i] : 0x7FF;
+        REG_VCOUNT_MATCH(i) = p;
+    }
 }
 
 

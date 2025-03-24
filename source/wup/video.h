@@ -4,7 +4,11 @@
 void Video_Init();
 
 void Video_WaitForVBlank();
+void Video_WaitForVBlankEnd();
+void Video_WaitForVMatch();
+int Video_GetVCount();
 int Video_IsVBlank();
+void Video_SetVMatchPositions(int* pos, int num);
 
 void Video_SetDisplayEnable(int enable);
 

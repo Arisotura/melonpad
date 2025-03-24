@@ -77,6 +77,7 @@
 #define IRQ_VBLANK              0x16
 #define IRQ_AUDIO               0x17
 #define IRQ_MIC                 0x18
+#define IRQ_VMATCH              0x1E
 
 
 // --- Timers -----------------------------------------------------------------
