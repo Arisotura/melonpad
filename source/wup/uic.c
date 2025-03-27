@@ -52,6 +52,13 @@ int CheckCRC16(u8* data, u32 len)
     return crc_calc == crc_data;
 }
 
+void SetCRC16(u8* data, u32 len)
+{
+    u16 crc_calc = CRC16(data, len);
+    data[len] = crc_calc & 0xFF;
+    data[len+1] = crc_calc >> 8;
+}
+
 
 void UIC_Init()
 {

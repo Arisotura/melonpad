@@ -3,6 +3,7 @@
 
 u16 CRC16(u8* data, u32 len);
 int CheckCRC16(u8* data, u32 len);
+void SetCRC16(u8* data, u32 len);
 
 void UIC_Init();
 

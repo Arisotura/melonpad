@@ -7,8 +7,29 @@
 
 #include "main.h"
 #include "sc_boot_menu.h"
-#include "sc_wifi_scan.h"
 
+
+extern const lv_image_dsc_t wifi_none;
+extern const lv_image_dsc_t wifi_level_0, wifi_level_1, wifi_level_2, wifi_level_3, wifi_level_4;
+extern const lv_image_dsc_t wifi_anim_1, wifi_anim_2, wifi_anim_3, wifi_anim_4;
+
+const lv_image_dsc_t* wifi_levels[6] = {
+    &wifi_level_0,
+    &wifi_level_0,
+    &wifi_level_1,
+    &wifi_level_2,
+    &wifi_level_3,
+    &wifi_level_4
+};
+
+const lv_image_dsc_t* wifi_anim[6] = {
+    &wifi_anim_1,
+    &wifi_anim_2,
+    &wifi_anim_3,
+    &wifi_anim_4,
+    &wifi_anim_3,
+    &wifi_anim_2
+};
 
 u16* Framebuffer;
 
@@ -16,10 +37,31 @@ sScreen* scCurrent;
 sScreen* scStack[8];
 u8 scStackLevel;
 u8 scCloseFlag;
+int scCloseRes;
+void* scCloseData;
 
 static lv_style_t scScreenStyle;
 static lv_style_t scTopbarStyle;
 static lv_style_t scBodyStyle;
+
+lv_style_t scIconStyle;
+
+u8 nwHasSettings;
+char nwSSID[32];
+u8 nwAuthType;
+u8 nwSecurity;
+char nwPassphrase[64];
+u8 nwDoConnect;
+u8 nwState; // 0=no connection 1=connecting 2=connected
+
+u32 nwLastConnAttempt;
+
+u8 nwAnimPhase;
+u32 nwLastAnimUpdate;
+
+u8 nwSignalQuality;
+
+static void NwUpdateIcon();
 
 
 
@@ -230,7 +272,7 @@ void LoadBinaryFromFlash(u32 addr)
 
 
 
-void ScOpen(sScreen* sc)
+void ScOpen(sScreen* sc, fnCloseCB callback)
 {
     if (scStackLevel >= 8)
     {
@@ -241,9 +283,11 @@ void ScOpen(sScreen* sc)
     if (scCurrent)
         scStack[scStackLevel++] = scCurrent;
 
+    scCurrent = sc;
+    sc->CloseCB = callback;
+    sc->HasTopBar = 0;
     sc->Open();
     sc->Activate();
-    scCurrent = sc;
 }
 
 void ScDoCloseCurrent()
@@ -259,11 +303,30 @@ void ScDoCloseCurrent()
     sScreen* prev = scCurrent;
     scCurrent = scStack[--scStackLevel];
     scCurrent->Activate();
+    if (scCurrent->HasTopBar)
+    {
+        if (prev->HasTopBar)
+        {
+            const void* tb_src0 = lv_img_get_src(prev->TopBar[0]);
+
+            lv_img_set_src(scCurrent->TopBar[0], tb_src0);
+        }
+        else
+        {
+            // TODO
+        }
+    }
     prev->Close();
+
+    if (prev->CloseCB)
+        prev->CloseCB(scCloseRes, scCloseData);
+    prev->CloseCB = NULL;
 }
 
-void ScCloseCurrent()
+void ScCloseCurrent(int res, void* data)
 {
+    scCloseRes = res;
+    scCloseData = data;
     scCloseFlag = 1;
 }
 
@@ -281,12 +344,19 @@ lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title)
     lv_label_set_text(label, title);
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
 
-    // TODO: add status icons and shit
+    lv_obj_t* nwicon = lv_image_create(topbar);
+    lv_obj_align(nwicon, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_image_set_src(nwicon, &wifi_none);
+    lv_obj_add_style(nwicon, &scIconStyle, 0);
+    scCurrent->TopBar[0] = nwicon;
 
     lv_obj_t* body = lv_obj_create(screen);
     lv_obj_set_width(body, lv_pct(100));
     lv_obj_set_flex_grow(body, 1);
     lv_obj_add_style(body, &scBodyStyle, 0);
+
+    scCurrent->HasTopBar = 1;
+    NwUpdateIcon();
 
     return body;
 }
@@ -299,6 +369,176 @@ lv_obj_t* ScAddButtonPane(lv_obj_t* screen)
     lv_obj_add_style(body, &scBodyStyle, 0);
 
     return body;
+}
+
+static void OnMsgBoxClose(lv_event_t* event)
+{
+    lv_obj_t* msgbox = (lv_obj_t*)lv_event_get_user_data(event);
+    fnMsgBoxCB callback = (fnMsgBoxCB)lv_obj_get_user_data(msgbox);
+    lv_msgbox_close(msgbox);
+    if (callback)
+        callback();
+}
+
+lv_obj_t* ScMsgBox(const char* title, const char* msg, fnMsgBoxCB callback)
+{
+    lv_obj_t* msgbox = lv_msgbox_create(NULL);
+    lv_obj_set_width(msgbox, 500);
+    lv_obj_set_user_data(msgbox, callback);
+
+    lv_msgbox_add_title(msgbox, title);
+
+    lv_obj_t* content = lv_msgbox_get_content(msgbox);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t* label = lv_label_create(content);
+    lv_label_set_text(label, msg);
+
+    lv_obj_t* btn;
+    btn = lv_msgbox_add_footer_button(msgbox, "OK");
+    lv_obj_add_event_cb(btn, OnMsgBoxClose, LV_EVENT_CLICKED, msgbox);
+
+    lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
+    lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    return msgbox;
+}
+
+
+void NwLoadSettings()
+{
+    u8 settings[128];
+    UIC_ReadEEPROM(0x600, settings, 128);
+    if (!CheckCRC16(settings, 126))
+    {
+        nwHasSettings = 0;
+        return;
+    }
+
+    memcpy(nwSSID, &settings[0x00], 32);
+    nwAuthType = settings[0x20];
+    nwSecurity = settings[0x21];
+    memcpy(nwPassphrase, &settings[0x22], 64);
+    nwHasSettings = 1;
+}
+
+static void NwUpdateIcon()
+{
+    if (!scCurrent->HasTopBar)
+        return;
+
+    switch (nwState)
+    {
+    case 0:
+        lv_image_set_src(scCurrent->TopBar[0], &wifi_none);
+        break;
+
+    case 1:
+        lv_image_set_src(scCurrent->TopBar[0], wifi_anim[nwAnimPhase]);
+        break;
+
+    case 2:
+        lv_image_set_src(scCurrent->TopBar[0], wifi_levels[nwSignalQuality]);
+        break;
+    }
+}
+
+static void NwUpdateQuality()
+{
+    if (!Wifi_GetRSSI(NULL, &nwSignalQuality))
+        nwSignalQuality = 0;
+
+    NwUpdateIcon();
+}
+
+static void NwSetState(int state)
+{
+    nwState = state;
+
+    nwLastAnimUpdate = WUP_GetTicks();
+    nwAnimPhase = 0;
+    NwUpdateIcon();
+}
+
+static void NwJoinCallback(int status)
+{
+    if (status == WIFI_JOIN_SUCCESS)
+    {
+        NwSetState(2);
+        // TODO other shit here
+    }
+    else
+    {
+        NwSetState(0);
+        nwLastConnAttempt = WUP_GetTicks();
+        printf("conn fail\n");
+    }
+}
+
+void NwConnect()
+{
+    if (nwState != 0)
+    {
+        Wifi_Disconnect();
+        NwSetState(0);
+        WUP_DelayMS(1);
+    }
+
+    if (!nwHasSettings)
+        return;
+
+    if (!Wifi_JoinNetwork(nwSSID, nwAuthType, nwSecurity, nwPassphrase, NwJoinCallback))
+        return;
+printf("attempting conn\n");
+    NwSetState(1);
+}
+
+void NwDisconnect()
+{
+    Wifi_Disconnect();
+    NwSetState(0);
+}
+
+void NwSetAutoConnect(u8 conn)
+{
+    nwDoConnect = conn;
+    if (conn && (nwState == 0))
+        nwLastConnAttempt = WUP_GetTicks();
+}
+
+void NwUpdate()
+{
+    u32 now = WUP_GetTicks();
+
+    if (nwDoConnect &&
+        nwHasSettings &&
+        (nwState == 0) &&
+        ((now - nwLastConnAttempt) > 5000))
+    {
+        // if we failed to connect, try again
+        NwConnect();
+    }
+
+    if ((nwState == 1) &&
+        ((now - nwLastAnimUpdate) > 300))
+    {
+        // if connecting, update status icon animation
+        nwLastAnimUpdate = now;
+        nwAnimPhase++;
+        if (nwAnimPhase >= 6)
+            nwAnimPhase = 0;
+
+        NwUpdateIcon();
+    }
+
+    if ((nwState == 2) &&
+        ((now - nwLastAnimUpdate) > 5000))
+    {
+        // if connected, periodically update signal quality
+        nwLastAnimUpdate = now;
+        NwUpdateQuality();
+    }
 }
 
 
@@ -318,7 +558,8 @@ void main()
 
     Video_SetDisplayEnable(1);
 
-	//u8 buf[16];
+    nwState = 0;
+    NwLoadSettings();
 
     lv_init();
     lv_tick_set_cb((lv_tick_get_cb_t)WUP_GetTicks);
@@ -361,17 +602,20 @@ void main()
     lv_style_set_radius(&scBodyStyle, 0);
     lv_style_set_pad_all(&scBodyStyle, 10);
 
-    //lv_example_button_1();
-    //lv_example_button_2();
-    //lv_example_button_3();
-    //ScWifiScan_Init();
+    lv_style_init(&scIconStyle);
+    lv_style_set_margin_top(&scIconStyle, -4);
+    lv_style_set_margin_bottom(&scIconStyle, -4);
 
     scCurrent = NULL;
     memset(scStack, 0, sizeof(scStack));
     scStackLevel = 0;
     scCloseFlag = 0;
+    scCloseRes = 0;
+    scCloseData = NULL;
 
-    ScOpen(&scBootMenu);
+    ScOpen(&scBootMenu, NULL);
+    nwDoConnect = 1;
+    NwConnect();
 
 	for (;;)
 	{
@@ -380,6 +624,8 @@ void main()
         scCurrent->Update();
         if (scCloseFlag)
             ScDoCloseCurrent();
+
+        NwUpdate();
 
         lv_timer_periodic_handler();
         Video_WaitForVMatch();

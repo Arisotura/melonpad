@@ -7,6 +7,7 @@
 
 #include "main.h"
 #include "sc_boot_menu.h"
+#include "sc_wifi_settings.h"
 #include "sc_hardware_info.h"
 
 sScreen scBootMenu =
@@ -23,9 +24,10 @@ static lv_obj_t* Screen;
 
 #define ObjDelete(obj) do { if (obj) lv_obj_delete(obj); obj = NULL; } while (0)
 
-static void OnHardwareInfo(lv_event_t* event)
+static void OnOpenScreen(lv_event_t* event)
 {
-    ScOpen(&scHardwareInfo);
+    sScreen* screen = (sScreen*)lv_event_get_user_data(event);
+    ScOpen(screen, NULL);
 }
 
 void ScBootMenu_Open()
@@ -69,10 +71,11 @@ void ScBootMenu_Open()
     lv_list_add_text(list2, "Settings");
     btn = lv_list_add_button(list2, LV_SYMBOL_SETTINGS, "Boot settings");
     btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Wifi settings");
+    lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scWifiSettings);
     btn = lv_list_add_button(list2, LV_SYMBOL_UPLOAD, "Dump FLASH");
-    btn = lv_list_add_button(list2, LV_SYMBOL_UP, "Update");
     btn = lv_list_add_button(list2, LV_SYMBOL_LIST, "Hardware info");
-    lv_obj_add_event_cb(btn, OnHardwareInfo, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scHardwareInfo);
+    btn = lv_list_add_button(list2, LV_SYMBOL_PLUS, "About");
 }
 
 void ScBootMenu_Close()

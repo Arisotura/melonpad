@@ -1246,13 +1246,13 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
     {
         // secured network, set passphrase
 
-        u8 pmk[100] = {0};
+        u8 pmk[68] = {0};
         int passlen = strlen(pass);
-        if (passlen > 96) passlen = 96;
+        if (passlen > 64) passlen = 64;
         *(u16*)&pmk[0] = passlen;
         *(u16*)&pmk[2] = 1; // flags, 1 for passphrase
-        strncpy((char*)&pmk[4], pass, 96);
-        res = Wifi_SendIoctl(WLC_SET_WSEC_PMK, 2, pmk, 100, NULL, 0);
+        strncpy((char*)&pmk[4], pass, 64);
+        res = Wifi_SendIoctl(WLC_SET_WSEC_PMK, 2, pmk, 68, NULL, 0);
         if (!res) return 0;
     }
 
@@ -1273,6 +1273,48 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
     JoinCB = callback;
     JoinStartTimestamp = WUP_GetTicks();
 
+    return 1;
+}
+
+int Wifi_Disconnect()
+{
+    u8 crap[10] = {0};
+    int res = Wifi_SendIoctl(WLC_DISASSOC, 2, crap, 10, NULL, 0);
+    if (!res) return 0;
+
+    State = State_Idle;
+    JoinCB = NULL;
+
+    return 1;
+}
+
+int Wifi_GetRSSI(s16* p_rssi, u8* p_quality)
+{
+    if (State != State_Joined)
+        return 0;
+    if ((!p_rssi) && (!p_quality))
+        return 0;
+
+    s32 rssi = 0;
+    int res = Wifi_SendIoctl(WLC_GET_RSSI, 2, (u8*)&rssi, 4, (u8*)&rssi, 4);
+    if (!res) return 0;
+
+    u8 quality;
+    if (rssi <= -91)
+        quality = 0;
+    else if (rssi <= -80)
+        quality = 1;
+    else if (rssi <= -70)
+        quality = 2;
+    else if (rssi <= -68)
+        quality = 3;
+    else if (rssi <= -58)
+        quality = 4;
+    else
+        quality = 5;
+
+    if (p_rssi) *p_rssi = (s16)rssi;
+    if (p_quality) *p_quality = quality;
     return 1;
 }
 
@@ -1331,11 +1373,12 @@ static void Wifi_HandleEvent(sPacket* pkt)
         if (LinkStatus)
         {
             netif_set_link_up(&NetIf);
-            dhcp_start(&NetIf);
+            // TODO make DHCP configurable
+            //dhcp_start(&NetIf);
         }
         else
         {
-            dhcp_stop(&NetIf);
+            //dhcp_stop(&NetIf);
             netif_set_link_down(&NetIf);
         }
         break;
@@ -1366,6 +1409,8 @@ static void Wifi_HandleEvent(sPacket* pkt)
 
             //if (stat == WIFI_JOIN_SUCCESS)
             //    dhcp_start(&NetIf);
+            if (stat != WIFI_JOIN_SUCCESS)
+                dhcp_stop(&NetIf);
         }
         break;
 

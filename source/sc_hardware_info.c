@@ -35,7 +35,7 @@ static lv_obj_t* Screen;
 
 static void OnBack(lv_event_t* event)
 {
-    ScCloseCurrent();
+    ScCloseCurrent(0, NULL);
 }
 
 void ScHardwareInfo_Open()

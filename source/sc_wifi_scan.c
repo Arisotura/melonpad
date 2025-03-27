@@ -8,14 +8,38 @@
 #include "main.h"
 #include "sc_wifi_scan.h"
 
-extern const lv_image_dsc_t wifi_0, wifi_1, wifi_2, wifi_3, wifi_4;
-const lv_image_dsc_t* wifi_levels[6] = {&wifi_0, &wifi_0, &wifi_1, &wifi_2, &wifi_3, &wifi_4};
+// TODO
+// * crashes when cancelling connection attempt?? - same
+// * can't close connection error dialog -- don't enable DHCP until connection is confirmed good
+// * need manual scan button
+// does cancel button work? - yes
+// * make list 600 wide (or whatever the width of the wifi settings screen is)
+// * remove autofilled password (test) 
+
+extern const lv_image_dsc_t* wifi_levels[6];
+
+sScreen scWifiScan =
+{
+    .Open = ScWifiScan_Open,
+    .Close = ScWifiScan_Close,
+    .Activate = ScWifiScan_Activate,
+    .Update = ScWifiScan_Update
+};
 
 static lv_obj_t* Screen;
 static lv_obj_t* ScanList;
 static lv_obj_t* PasswordPopup;
 static lv_obj_t* PasswordField;
+static lv_obj_t* ConnectPopup;
 static lv_obj_t* Keyboard;
+
+extern lv_style_t scIconStyle;
+
+static int JoinRes;
+static u32 JoinTime;
+static lv_obj_t* JoinMsgPopup;
+
+static sWifiScanResult ScanResult;
 
 static u8 DoScan;
 static u8 Scanning;
@@ -26,21 +50,49 @@ static void JoinNetwork(sScanInfo* info, const char* pass);
 
 #define ObjDelete(obj) do { if (obj) lv_obj_delete(obj); obj = NULL; } while (0)
 
-void ScWifiScan_Init()
+
+static void OnBack(lv_event_t* event)
 {
-    Screen = lv_obj_create(NULL);
-
-    ScanList = lv_list_create(Screen);
-    lv_obj_set_size(ScanList, 800, 400);
-    lv_obj_align(ScanList, LV_ALIGN_TOP_MID, 0, 5);
-
-    //lv_obj_t * btn;
-    // TODO make this a header and not part of the list?
-    lv_list_add_text(ScanList, "Wifi networks");
+    ScCloseCurrent(0, NULL);
 }
 
-void ScWifiScan_Enter()
+void ScWifiScan_Open()
 {
+    Screen = lv_obj_create(NULL);
+    lv_obj_t* body = ScAddTopbar(Screen, "Search for wifi networks");
+
+
+    ScanList = lv_list_create(body);
+    lv_obj_set_size(ScanList, lv_pct(70), lv_pct(100));
+    lv_obj_align(ScanList, LV_ALIGN_TOP_MID, 0, 0);
+
+
+    lv_obj_t* btnpane = ScAddButtonPane(Screen);
+    //BtnPane = btnpane;
+
+    lv_obj_t* btn = lv_button_create(btnpane);
+    lv_obj_add_event_cb(btn, OnBack, LV_EVENT_CLICKED, NULL);
+    lv_obj_align(btn, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_t* label = lv_label_create(btn);
+    lv_label_set_text(label, "Cancel");
+    lv_obj_center(label);
+
+    // TODO init keyboard here
+    //Keyboard = lv_keyboard_create(Screen);
+    //Keyboard = lv_keyboard_create(lv_layer_top());
+    //lv_obj_add_flag(Keyboard, LV_OBJ_FLAG_HIDDEN);
+}
+
+void ScWifiScan_Close()
+{
+    lv_obj_delete(Screen);
+}
+
+void ScWifiScan_Activate()
+{
+    memset(&ScanResult, 0, sizeof(ScanResult));
+
     DoScan = 1;
     Scanning = 0;
     LastScan = 0;
@@ -48,13 +100,18 @@ void ScWifiScan_Enter()
     PasswordPopup = NULL;
     Keyboard = NULL;
 
+    JoinRes = 1;
+    JoinTime = 0;
+    JoinMsgPopup = NULL;
+
     lv_screen_load(Screen);
     StartScan();
 }
 
 static void OnPwCancel(lv_event_t* event)
 {
-    ObjDelete(PasswordPopup);
+    //ObjDelete(PasswordPopup);
+    lv_msgbox_close(PasswordPopup);
     ObjDelete(Keyboard);
 
     DoScan = 1;
@@ -68,15 +125,26 @@ static void OnPwConnect(lv_event_t* event)
     const char* pass = lv_textarea_get_text(PasswordField);
     JoinNetwork(info, pass);
 
-    ObjDelete(PasswordPopup);
+    //ObjDelete(PasswordPopup);
+    lv_msgbox_close(PasswordPopup);
     ObjDelete(Keyboard);
+}
+
+static void OnConnCancel(lv_event_t* event)
+{
+    printf("CONN CANCEL\n");
+    Wifi_Disconnect();
+printf("aa\n");
+    lv_msgbox_close(ConnectPopup);
+    printf("bb\n");
 }
 
 static void OpenPasswordPopup(sScanInfo* info)
 {
     DoScan = 0;
 
-    lv_obj_t* msgbox = lv_msgbox_create(lv_screen_active());
+    //lv_obj_t* msgbox = lv_msgbox_create(lv_screen_active());
+    lv_obj_t* msgbox = lv_msgbox_create(NULL);
     lv_obj_set_width(msgbox, 500);
     lv_obj_set_y(msgbox, lv_pct(-25));
 
@@ -94,7 +162,7 @@ static void OpenPasswordPopup(sScanInfo* info)
     lv_obj_t* textbox = lv_textarea_create(content);
     lv_textarea_set_one_line(textbox, 1);
     lv_textarea_set_password_mode(textbox, 1);
-    lv_textarea_set_max_length(textbox, 96);
+    lv_textarea_set_max_length(textbox, 64);
     lv_obj_set_flex_grow(textbox, 1);
     lv_obj_add_event_cb(textbox, OnPwCancel, LV_EVENT_CANCEL, info);
     lv_obj_add_event_cb(textbox, OnPwConnect, LV_EVENT_READY, info);
@@ -103,7 +171,8 @@ static void OpenPasswordPopup(sScanInfo* info)
     lv_obj_t* btn;
     btn = lv_msgbox_add_footer_button(msgbox, "Cancel");
     lv_obj_add_event_cb(btn, OnPwCancel, LV_EVENT_CLICKED, info);
-    btn = lv_msgbox_add_footer_button(msgbox, "Connect");
+    //btn = lv_msgbox_add_footer_button(msgbox, "Connect");
+    btn = lv_msgbox_add_footer_button(msgbox, "OK");
     lv_obj_add_event_cb(btn, OnPwConnect, LV_EVENT_CLICKED, info);
 
     lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
@@ -113,7 +182,8 @@ static void OpenPasswordPopup(sScanInfo* info)
     PasswordField = textbox;
 
     // keyboard
-    lv_obj_t* keyboard = lv_keyboard_create(lv_screen_active());
+    //lv_obj_t* keyboard = lv_keyboard_create(lv_screen_active());
+    lv_obj_t* keyboard = lv_keyboard_create(lv_layer_top());
     lv_keyboard_set_textarea(keyboard, textbox);
     Keyboard = keyboard;
 }
@@ -122,9 +192,9 @@ static void OpenConnectingPopup(sScanInfo* info)
 {
     DoScan = 0;
 
-    lv_obj_t* msgbox = lv_msgbox_create(lv_screen_active());
+    //lv_obj_t* msgbox = lv_msgbox_create(lv_screen_active());
+    lv_obj_t* msgbox = lv_msgbox_create(NULL);
     lv_obj_set_width(msgbox, 500);
-    lv_obj_set_y(msgbox, lv_pct(-25));
 
     char text[100];
     snprintf(text, 100, "Connecting to %s...", info->SSID);
@@ -139,12 +209,12 @@ static void OpenConnectingPopup(sScanInfo* info)
 
     lv_obj_t* btn;
     btn = lv_msgbox_add_footer_button(msgbox, "Cancel");
-    lv_obj_add_event_cb(btn, OnPwCancel, LV_EVENT_CLICKED, info);
+    lv_obj_add_event_cb(btn, OnConnCancel, LV_EVENT_CLICKED, info);
 
     lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
     lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // TODO assign it to something
+    ConnectPopup = msgbox;
 }
 
 static void OnSelectAP(lv_event_t* event)
@@ -186,6 +256,7 @@ static void ScanCallback(sScanInfo* list, int num)
 
         lv_obj_t* lvlicon = lv_image_create(btn);
         lv_image_set_src(lvlicon, wifi_levels[info->SignalQuality]);
+        lv_obj_add_style(lvlicon, &scIconStyle, 0);
 
         info = info->Next;
     }
@@ -209,13 +280,32 @@ static void StartScan()
     Wifi_StartScan(ScanCallback);
 }
 
+static void OnJoinMsgOK()
+{
+    JoinMsgPopup = NULL;
+
+    ScCloseCurrent(1, &ScanResult);
+}
+
 static void JoinCallback(int status)
 {
-    printf("JOIN: STATUS=%d\n", status);
+    JoinRes = status;
+    JoinTime = WUP_GetTicks();
+
+    lv_msgbox_close(ConnectPopup);
+    if (status == WIFI_JOIN_SUCCESS)
+        JoinMsgPopup = ScMsgBox("Success", "Connection successful!", OnJoinMsgOK);
+    else
+        JoinMsgPopup = ScMsgBox("Error", "Failed to connect.", NULL);
 }
 
 static void JoinNetwork(sScanInfo* info, const char* pass)
 {
+    strncpy(ScanResult.SSID, info->SSID, 32);
+    ScanResult.AuthType = info->AuthType;
+    ScanResult.Security = info->Security;
+    strncpy(ScanResult.Passphrase, pass, 64);
+
     OpenConnectingPopup(info);
 
     Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass, JoinCallback);
@@ -223,13 +313,22 @@ static void JoinNetwork(sScanInfo* info, const char* pass)
 
 void ScWifiScan_Update()
 {
+    u32 time = WUP_GetTicks();
+
     if (DoScan)
     {
-        u32 time = WUP_GetTicks();
         if ((time - LastScan) > 10000)
         {
             // start a wifi scan
             StartScan();
         }
+    }
+
+    if (JoinMsgPopup &&
+        (JoinRes == WIFI_JOIN_SUCCESS) &&
+        ((time - JoinTime) > 1000))
+    {
+        lv_msgbox_close(JoinMsgPopup);
+        OnJoinMsgOK();
     }
 }

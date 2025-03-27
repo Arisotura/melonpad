@@ -131,7 +131,8 @@ void WUP_Init()
     REG_CLK_UNK50    = CLK_SOURCE(CLKSRC_32MHZ)    | CLK_DIVIDER(2);
 
     // set the timers' base clock to tick every 108 cycles (ie. every microsecond)
-    REG_TIMER_PRESCALER = 107;
+    // for timers, we halve it so we get microsecond precision
+    REG_TIMER_PRESCALER = 53;
     REG_COUNTUP_PRESCALER = 107;
 
     // reset hardware
@@ -196,7 +197,7 @@ void WUP_Init()
     TickCount = 0;
 
     REG_TIMER_TARGET(1) = 124;
-    REG_TIMER_CNT(1) = TIMER_DIV_8 | TIMER_ENABLE;
+    REG_TIMER_CNT(1) = TIMER_DIV_16 | TIMER_ENABLE;
 
     // reset count-up timer
     REG_COUNTUP_VALUE = 0;
@@ -322,14 +323,10 @@ void Timer1IRQ(int irq, void* userdata)
 
 void WUP_DelayUS(int us)
 {
-    // TODO: consider halving the timer prescaler, so we can actually
-    // have microsecond precision here
-    if (us < 2) us = 2;
-
     REG_TIMER_CNT(0) = 0;
     Timer0Flag = 0;
     REG_TIMER_VALUE(0) = 0;
-    REG_TIMER_TARGET(0) = (us >> 1) - 1;
+    REG_TIMER_TARGET(0) = us - 1;
     REG_TIMER_CNT(0) = TIMER_ENABLE;
 
     while (!Timer0Flag)
@@ -343,7 +340,7 @@ void WUP_DelayMS(int ms)
     REG_TIMER_CNT(0) = 0;
     Timer0Flag = 0;
     REG_TIMER_VALUE(0) = 0;
-    REG_TIMER_TARGET(0) = (ms  * 500) - 1;
+    REG_TIMER_TARGET(0) = (ms * 1000) - 1;
     REG_TIMER_CNT(0) = TIMER_ENABLE;
 
     while (!Timer0Flag)

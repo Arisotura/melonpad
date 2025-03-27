@@ -60,5 +60,8 @@ int Wifi_StartScan(fnScanCb callback);
 void Wifi_CleanupScanList();
 
 int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, fnJoinCb callback);
+int Wifi_Disconnect();
+
+int Wifi_GetRSSI(s16* rssi, u8* quality);
 
 #endif // _WIFI_H_
