@@ -82,6 +82,8 @@ static u8 LinkStatus;
 static struct netif NetIf;
 static struct dhcp NetIfDhcp;
 
+static u8 EnableDHCP;
+
 int Wifi_InitIoctls();
 
 void Wifi_ResetRxFlags(u8 flags);
@@ -231,6 +233,7 @@ int Wifi_Init()
     dhcp_set_struct(&NetIf, &NetIfDhcp);
     netif_set_default(&NetIf);
     netif_set_up(&NetIf);
+    EnableDHCP = 0;
 
     Wifi_SetClkEnable(0);
     printf("Wifi: ready to go\n");
@@ -601,8 +604,6 @@ int Wifi_SendIoctl(u32 opc, u16 flags, u8* data_in, u32 len_in, u8* data_out, u3
     if (totallen > 1518)
         totallen = 1518;
     totallen += 12;
-
-    printf("wifi: sending ioctl, txseqno=%02X txmax=%02X\n", TxSeqno, TxMax);
 
     *(u16*)&buf[0] = totallen;
     *(u16*)&buf[2] = ~totallen;
@@ -1319,10 +1320,35 @@ int Wifi_GetRSSI(s16* p_rssi, u8* p_quality)
 }
 
 
-void Wifi_Test()
+void Wifi_SetDHCPEnable(int enable)
 {
-    dhcp_start(&NetIf);
+    EnableDHCP = enable;
+    if (LinkStatus)
+    {
+        if (enable)
+            dhcp_start(&NetIf);
+        else
+            dhcp_stop(&NetIf);
+    }
 }
+
+void Wifi_SetIPAddr(const u8* ip, const u8* subnet, const u8* gateway)
+{
+    if (!ip)
+    {
+        netif_set_addr(&NetIf, NULL, NULL, NULL);
+        return;
+    }
+
+    ip4_addr_t ip4_ip, ip4_subnet, ip4_gateway;
+
+    IP4_ADDR(&ip4_ip, ip[0], ip[1], ip[2], ip[3]);
+    IP4_ADDR(&ip4_subnet, subnet[0], subnet[1], subnet[2], subnet[3]);
+    IP4_ADDR(&ip4_gateway, gateway[0], gateway[1], gateway[2], gateway[3]);
+
+    netif_set_addr(&NetIf, &ip4_ip, &ip4_subnet, &ip4_gateway);
+}
+
 
 static void Wifi_HandleEvent(sPacket* pkt)
 {
@@ -1373,12 +1399,13 @@ static void Wifi_HandleEvent(sPacket* pkt)
         if (LinkStatus)
         {
             netif_set_link_up(&NetIf);
-            // TODO make DHCP configurable
-            //dhcp_start(&NetIf);
+            if (EnableDHCP)
+                dhcp_start(&NetIf);
         }
         else
         {
-            //dhcp_stop(&NetIf);
+            if (EnableDHCP)
+                dhcp_stop(&NetIf);
             netif_set_link_down(&NetIf);
         }
         break;
@@ -1577,14 +1604,14 @@ err_t NetIfInit(struct netif* netif)
 
 err_t NetIfInput(struct pbuf* p, struct netif* inp)
 {
-    printf("NetIfInput\n");
     ethernet_input(p, inp);
     return ERR_OK;
 }
 
 err_t NetIfOutput(struct netif* netif, struct pbuf* p)
 {
-    printf("NetIfOutput\n");
+    if (!LinkStatus)
+        return ERR_CONN;
 
     Wifi_WaitTXReady();
 
@@ -1604,8 +1631,6 @@ err_t NetIfOutput(struct netif* netif, struct pbuf* p)
     }
 
     int totallen = len_in + 18;
-
-    printf("wifi: sending data, txseqno=%02X txmax=%02X\n", TxSeqno, TxMax);
 
     *(u16*)&buf[0] = totallen;
     *(u16*)&buf[2] = ~totallen;

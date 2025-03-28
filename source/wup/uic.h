@@ -22,6 +22,8 @@ void UIC_WriteDisable();
 int UIC_ReadEEPROM(u32 offset, u8* data, int length);
 int UIC_WriteEEPROM(u32 offset, u8* data, int length);
 
+u8 UIC_GetBatteryLevel();
+
 void UIC_SetBacklight(int enable);
 
 void UIC_WaitWifiReady();

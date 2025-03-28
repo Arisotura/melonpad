@@ -505,6 +505,7 @@ void ScWifiSettings_Close()
 {
     lv_obj_delete(Screen);
 
+    NwLoadSettings();
     NwSetAutoConnect(1);
     NwConnect();
 }

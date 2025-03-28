@@ -33,6 +33,7 @@ lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title);
 lv_obj_t* ScAddButtonPane(lv_obj_t* screen);
 lv_obj_t* ScMsgBox(const char* title, const char* msg, fnMsgBoxCB callback);
 
+void NwLoadSettings();
 void NwConnect();
 void NwDisconnect();
 void NwSetAutoConnect(u8 conn);

@@ -64,4 +64,7 @@ int Wifi_Disconnect();
 
 int Wifi_GetRSSI(s16* rssi, u8* quality);
 
+void Wifi_SetDHCPEnable(int enable);
+void Wifi_SetIPAddr(const u8* ip, const u8* subnet, const u8* gateway);
+
 #endif // _WIFI_H_

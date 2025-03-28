@@ -351,6 +351,15 @@ int UIC_WriteEEPROM(u32 offset, u8* data, int length)
     return 1;
 }
 
+u8 UIC_GetBatteryLevel()
+{
+    if (!UICGood) return 0xFF;
+
+    u8 ret;
+    UIC_SendCommand(0x10, NULL, 0, &ret, 1);
+    return ret;
+}
+
 void UIC_SetBacklight(int enable)
 {
     if (!UICGood) return;

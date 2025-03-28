@@ -9,27 +9,9 @@
 #include "sc_boot_menu.h"
 
 
-extern const lv_image_dsc_t wifi_none;
-extern const lv_image_dsc_t wifi_level_0, wifi_level_1, wifi_level_2, wifi_level_3, wifi_level_4;
-extern const lv_image_dsc_t wifi_anim_1, wifi_anim_2, wifi_anim_3, wifi_anim_4;
-
-const lv_image_dsc_t* wifi_levels[6] = {
-    &wifi_level_0,
-    &wifi_level_0,
-    &wifi_level_1,
-    &wifi_level_2,
-    &wifi_level_3,
-    &wifi_level_4
-};
-
-const lv_image_dsc_t* wifi_anim[6] = {
-    &wifi_anim_1,
-    &wifi_anim_2,
-    &wifi_anim_3,
-    &wifi_anim_4,
-    &wifi_anim_3,
-    &wifi_anim_2
-};
+extern const lv_image_dsc_t wifi_icons;
+u8 qualoffset[6] = {0, 0, 1, 2, 3, 4};
+u8 animoffset[6] = {1, 2, 3, 4, 3, 2};
 
 u16* Framebuffer;
 
@@ -43,8 +25,6 @@ void* scCloseData;
 static lv_style_t scScreenStyle;
 static lv_style_t scTopbarStyle;
 static lv_style_t scBodyStyle;
-
-lv_style_t scIconStyle;
 
 u8 nwHasSettings;
 char nwSSID[32];
@@ -61,7 +41,15 @@ u32 nwLastAnimUpdate;
 
 u8 nwSignalQuality;
 
+u8 nwEnableDHCP;
+u8 nwIPAddr[4];
+u8 nwSubnetwork[4];
+u8 nwGateway[4];
+
+u32 pwLastUpdate;
+
 static void NwUpdateIcon();
+static void PwUpdateIcon();
 
 
 
@@ -305,16 +293,8 @@ void ScDoCloseCurrent()
     scCurrent->Activate();
     if (scCurrent->HasTopBar)
     {
-        if (prev->HasTopBar)
-        {
-            const void* tb_src0 = lv_img_get_src(prev->TopBar[0]);
-
-            lv_img_set_src(scCurrent->TopBar[0], tb_src0);
-        }
-        else
-        {
-            // TODO
-        }
+        NwUpdateIcon();
+        PwUpdateIcon();
     }
     prev->Close();
 
@@ -345,10 +325,15 @@ lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title)
     lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
 
     lv_obj_t* nwicon = lv_image_create(topbar);
-    lv_obj_align(nwicon, LV_ALIGN_RIGHT_MID, 0, 0);
-    lv_image_set_src(nwicon, &wifi_none);
-    lv_obj_add_style(nwicon, &scIconStyle, 0);
+    lv_obj_set_size(nwicon, 16, 16);
+    lv_obj_align(nwicon, LV_ALIGN_RIGHT_MID, -28, 0);
+    lv_image_set_src(nwicon, &wifi_icons);
+    lv_image_set_inner_align(nwicon, LV_IMAGE_ALIGN_TOP_LEFT);
     scCurrent->TopBar[0] = nwicon;
+
+    lv_obj_t* pwicon = lv_image_create(topbar);
+    lv_obj_align(pwicon, LV_ALIGN_RIGHT_MID, 0, 0);
+    scCurrent->TopBar[1] = pwicon;
 
     lv_obj_t* body = lv_obj_create(screen);
     lv_obj_set_width(body, lv_pct(100));
@@ -357,6 +342,7 @@ lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title)
 
     scCurrent->HasTopBar = 1;
     NwUpdateIcon();
+    PwUpdateIcon();
 
     return body;
 }
@@ -420,6 +406,12 @@ void NwLoadSettings()
     nwAuthType = settings[0x20];
     nwSecurity = settings[0x21];
     memcpy(nwPassphrase, &settings[0x22], 64);
+
+    nwEnableDHCP = settings[0x62] == 0;
+    memcpy(nwIPAddr, &settings[0x63], 4);
+    memcpy(nwSubnetwork, &settings[0x67], 4);
+    memcpy(nwGateway, &settings[0x6B], 4);
+
     nwHasSettings = 1;
 }
 
@@ -431,15 +423,18 @@ static void NwUpdateIcon()
     switch (nwState)
     {
     case 0:
-        lv_image_set_src(scCurrent->TopBar[0], &wifi_none);
+        lv_image_set_offset_x(scCurrent->TopBar[0], 0);
+        lv_image_set_offset_y(scCurrent->TopBar[0], 0);
         break;
 
     case 1:
-        lv_image_set_src(scCurrent->TopBar[0], wifi_anim[nwAnimPhase]);
+        lv_image_set_offset_x(scCurrent->TopBar[0], -16 * animoffset[nwAnimPhase]);
+        lv_image_set_offset_y(scCurrent->TopBar[0], 0);
         break;
 
     case 2:
-        lv_image_set_src(scCurrent->TopBar[0], wifi_levels[nwSignalQuality]);
+        lv_image_set_offset_x(scCurrent->TopBar[0], -16 * qualoffset[nwSignalQuality]);
+        lv_image_set_offset_y(scCurrent->TopBar[0], -16);
         break;
     }
 }
@@ -466,13 +461,12 @@ static void NwJoinCallback(int status)
     if (status == WIFI_JOIN_SUCCESS)
     {
         NwSetState(2);
-        // TODO other shit here
+        NwUpdateQuality();
     }
     else
     {
         NwSetState(0);
         nwLastConnAttempt = WUP_GetTicks();
-        printf("conn fail\n");
     }
 }
 
@@ -488,9 +482,20 @@ void NwConnect()
     if (!nwHasSettings)
         return;
 
+    if (nwEnableDHCP)
+    {
+        Wifi_SetIPAddr(NULL, NULL, NULL);
+        Wifi_SetDHCPEnable(1);
+    }
+    else
+    {
+        Wifi_SetDHCPEnable(0);
+        Wifi_SetIPAddr(nwIPAddr, nwSubnetwork, nwGateway);
+    }
+
     if (!Wifi_JoinNetwork(nwSSID, nwAuthType, nwSecurity, nwPassphrase, NwJoinCallback))
         return;
-printf("attempting conn\n");
+
     NwSetState(1);
 }
 
@@ -538,6 +543,42 @@ void NwUpdate()
         // if connected, periodically update signal quality
         nwLastAnimUpdate = now;
         NwUpdateQuality();
+    }
+}
+
+
+static void PwUpdateIcon()
+{
+    sInputData* input = Input_GetData();
+    if (input->PowerStatus & 0xC1)
+    {
+        // connected to external power
+        lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_CHARGE);
+    }
+    else
+    {
+        u8 batt = UIC_GetBatteryLevel();
+        switch (batt)
+        {
+        case 6: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_FULL); break;
+        case 5:
+        case 4: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_3); break;
+        case 3:
+        case 2: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_2); break;
+        case 1: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_1); break;
+        case 0: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_EMPTY); break;
+        }
+    }
+
+    pwLastUpdate = WUP_GetTicks();
+}
+
+void PwUpdate()
+{
+    u32 now = WUP_GetTicks();
+    if ((now - pwLastUpdate) > 1000)
+    {
+        PwUpdateIcon();
     }
 }
 
@@ -602,10 +643,6 @@ void main()
     lv_style_set_radius(&scBodyStyle, 0);
     lv_style_set_pad_all(&scBodyStyle, 10);
 
-    lv_style_init(&scIconStyle);
-    lv_style_set_margin_top(&scIconStyle, -4);
-    lv_style_set_margin_bottom(&scIconStyle, -4);
-
     scCurrent = NULL;
     memset(scStack, 0, sizeof(scStack));
     scStackLevel = 0;
@@ -626,6 +663,7 @@ void main()
             ScDoCloseCurrent();
 
         NwUpdate();
+        PwUpdate();
 
         lv_timer_periodic_handler();
         Video_WaitForVMatch();
