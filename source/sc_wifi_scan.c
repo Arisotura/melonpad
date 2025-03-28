@@ -24,6 +24,7 @@ static lv_obj_t* Screen;
 static lv_obj_t* ScanList;
 static lv_obj_t* PasswordPopup;
 static lv_obj_t* PasswordField;
+static lv_obj_t* PasswordOkBtn;
 static lv_obj_t* ConnectPopup;
 static lv_obj_t* Keyboard;
 static lv_obj_t* ScanBtn;
@@ -159,6 +160,15 @@ static void OnPwConnect(lv_event_t* event)
     lv_obj_delete(Keyboard); Keyboard = NULL;
 }
 
+/*static void OnPwType(lv_event_t* event)
+{
+    const char* pass = lv_textarea_get_text(PasswordField);
+    if (strlen(pass) < 8)
+        lv_obj_add_state(PasswordOkBtn, LV_STATE_DISABLED);
+    else
+        lv_obj_remove_state(PasswordOkBtn, LV_STATE_DISABLED);
+}*/
+
 static void OnConnCancel(lv_event_t* event)
 {
     Wifi_Disconnect();
@@ -195,6 +205,7 @@ static void OpenPasswordPopup(sScanInfo* info)
     lv_obj_set_flex_grow(textbox, 1);
     lv_obj_add_event_cb(textbox, OnPwCancel, LV_EVENT_CANCEL, info);
     lv_obj_add_event_cb(textbox, OnPwConnect, LV_EVENT_READY, info);
+    //lv_obj_add_event_cb(textbox, OnPwType, LV_EVENT_VALUE_CHANGED, info);
 
     lv_obj_t* btn;
     btn = lv_msgbox_add_footer_button(msgbox, "Cancel");
@@ -202,6 +213,7 @@ static void OpenPasswordPopup(sScanInfo* info)
     //btn = lv_msgbox_add_footer_button(msgbox, "Connect");
     btn = lv_msgbox_add_footer_button(msgbox, "OK");
     lv_obj_add_event_cb(btn, OnPwConnect, LV_EVENT_CLICKED, info);
+    PasswordOkBtn = btn;
 
     lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
     lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -314,7 +326,14 @@ static void StartScan()
         lv_obj_delete(child);
     }
 
-    Wifi_StartScan(ScanCallback);
+    if (!Wifi_StartScan(ScanCallback))
+    {
+        Scanning = 0;
+        ScMsgBox("Error", "Failed to start network search.", NULL);
+
+        lv_obj_remove_state(ScanBtn, LV_STATE_DISABLED);
+        lv_label_set_text(lv_obj_get_child(ScanBtn, 0), "Search");
+    }
 }
 
 static void OnJoinMsgOK()
@@ -358,7 +377,11 @@ static void JoinNetwork(sScanInfo* info, const char* pass)
     Wifi_SetDHCPEnable(0);
     Wifi_SetIPAddr(NULL, NULL, NULL);
 
-    Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass, JoinCallback);
+    if (!Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass, JoinCallback))
+    {
+        lv_msgbox_close(ConnectPopup);
+        ScMsgBox("Error", "Failed to connect.", NULL);
+    }
 }
 
 void ScWifiScan_Update()
