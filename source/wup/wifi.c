@@ -1351,6 +1351,17 @@ void Wifi_SetIPAddr(const u8* ip, const u8* subnet, const u8* gateway)
     netif_set_addr(&NetIf, &ip4_ip, &ip4_subnet, &ip4_gateway);
 }
 
+int Wifi_GetIPAddr(u8* ip)
+{
+    const ip4_addr_t* addr = netif_ip4_addr(&NetIf);
+    if (ip4_addr_isany(addr))
+        return 0;
+
+    for (int i = 0; i < 4; i++)
+        ip[i] = ip4_addr_get_byte(addr, i);
+    return 1;
+}
+
 
 static void Wifi_HandleEvent(sPacket* pkt)
 {
@@ -1494,13 +1505,13 @@ static void Wifi_HandleEvent(sPacket* pkt)
 
 static void Wifi_HandleDataFrame(sPacket* pkt)
 {
+    u16 totallen = *(u16*)&pkt->Data[0];
     u8 dataoffset = pkt->Data[7];
-    u8* pktdata = &pkt->Data[dataoffset];
 
-    // skip BDC header
-    // TODO: pkt->Length includes extra padding
-    u8* data = &pktdata[4];
-    int len = pkt->Length - dataoffset - 4;
+    // skip headers
+    u8* data = &pkt->Data[dataoffset + 4];
+    //int len = pkt->Length - dataoffset - 4;
+    int len = totallen - dataoffset - 4;
 
     // TODO use externally allocated pbuf to avoid copying shit around
     // (pbuf_alloced_custom())
@@ -1550,7 +1561,7 @@ void Wifi_Update()
 
     if (State == State_GettingIP)
     {
-        ip4_addr_t* addr = netif_ip4_addr(&NetIf);
+        const ip4_addr_t* addr = netif_ip4_addr(&NetIf);
         if (!ip4_addr_isany(addr))
         {
             // we got an IP address

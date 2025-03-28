@@ -220,7 +220,7 @@ send_data(const ip_addr_t *addr, u16_t port)
   if (tftp_state.last_data != NULL) {
     pbuf_free(tftp_state.last_data);
   }
-
+printf("sending data: blk=%04X\n", tftp_state.blknum);
   tftp_state.last_data = init_packet(TFTP_DATA, tftp_state.blknum, TFTP_MAX_PAYLOAD_SIZE);
   if (tftp_state.last_data == NULL) {
     return;
@@ -358,6 +358,7 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
         /* retransmit of previous block, ack again (casting to u16_t to care for overflow) */
         send_ack(addr, port, blknum);
       } else {
+          printf("aaaa. %04X / %04X\n", blknum, tftp_state.blknum);
         send_error(addr, port, TFTP_ERROR_UNKNOWN_TRFR_ID, "Wrong block number");
       }
       break;
@@ -366,6 +367,7 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
     case PP_HTONS(TFTP_ACK): {
       u16_t blknum;
       int lastpkt;
+      printf("recv ack: %04X (last=%04X)\n", lwip_ntohs(sbuf[1]), tftp_state.blknum);
 
       if (tftp_state.handle == NULL) {
         send_error(addr, port, TFTP_ERROR_ACCESS_VIOLATION, "No connection");
@@ -379,6 +381,7 @@ tftp_recv(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr
 
       blknum = lwip_ntohs(sbuf[1]);
       if (blknum != tftp_state.blknum) {
+          printf("bbbb. %04X / %04X\n", blknum, tftp_state.blknum);
         send_error(addr, port, TFTP_ERROR_UNKNOWN_TRFR_ID, "Wrong block number");
         break;
       }

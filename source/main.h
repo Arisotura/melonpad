@@ -37,5 +37,6 @@ void NwLoadSettings();
 void NwConnect();
 void NwDisconnect();
 void NwSetAutoConnect(u8 conn);
+int NwGetState();
 
 #endif

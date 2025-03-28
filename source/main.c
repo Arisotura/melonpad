@@ -456,6 +456,11 @@ static void NwSetState(int state)
     NwUpdateIcon();
 }
 
+int NwGetState()
+{
+    return nwState;
+}
+
 static void NwJoinCallback(int status)
 {
     if (status == WIFI_JOIN_SUCCESS)
