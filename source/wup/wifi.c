@@ -31,7 +31,8 @@
 #define State_Idle      0
 #define State_Scanning  1
 #define State_Joining   2
-#define State_Joined    3
+#define State_GettingIP 3
+#define State_Joined    4
 
 static u8 ClkEnable;
 static u8 State;
@@ -98,7 +99,7 @@ void send_binary(u8* data, int len);
 void dump_data(u8* data, int len);
 
 err_t NetIfInit(struct netif* netif);
-err_t NetIfInput(struct pbuf* p, struct netif* inp);
+err_t NetIfOutput(struct netif* netif, struct pbuf* p);
 
 
 int Wifi_Init()
@@ -227,7 +228,7 @@ int Wifi_Init()
         return 0;
 
     lwip_init();
-    if (netif_add_noaddr(&NetIf, NULL, NetIfInit, NetIfInput) == NULL)
+    if (netif_add_noaddr(&NetIf, NULL, NetIfInit, netif_input) == NULL)
         return 0;
 
     dhcp_set_struct(&NetIf, &NetIfDhcp);
@@ -1285,6 +1286,7 @@ int Wifi_Disconnect()
 
     State = State_Idle;
     JoinCB = NULL;
+    LinkStatus = 0;
 
     return 1;
 }
@@ -1373,11 +1375,17 @@ static void Wifi_HandleEvent(sPacket* pkt)
             {
                 if (JoinOpen)
                 {
-                    if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
-                    JoinCB = NULL;
-                    State = State_Joined;
-
-                    //dhcp_start(&NetIf);
+                    if (EnableDHCP)
+                    {
+                        State = State_GettingIP;
+                        JoinStartTimestamp = WUP_GetTicks();
+                    }
+                    else
+                    {
+                        if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
+                        JoinCB = NULL;
+                        State = State_Joined;
+                    }
                 }
                 break;
             }
@@ -1430,12 +1438,18 @@ static void Wifi_HandleEvent(sPacket* pkt)
             else
                 stat = WIFI_JOIN_FAIL;
 
-            if (JoinCB) JoinCB(stat);
-            JoinCB = NULL;
-            State = (stat == WIFI_JOIN_SUCCESS) ? State_Joined : State_Idle;
+            if (EnableDHCP && (stat == WIFI_JOIN_SUCCESS))
+            {
+                State = State_GettingIP;
+                JoinStartTimestamp = WUP_GetTicks();
+            }
+            else
+            {
+                if (JoinCB) JoinCB(stat);
+                JoinCB = NULL;
+                State = (stat == WIFI_JOIN_SUCCESS) ? State_Joined : State_Idle;
+            }
 
-            //if (stat == WIFI_JOIN_SUCCESS)
-            //    dhcp_start(&NetIf);
             if (stat != WIFI_JOIN_SUCCESS)
                 dhcp_stop(&NetIf);
         }
@@ -1482,7 +1496,6 @@ static void Wifi_HandleDataFrame(sPacket* pkt)
 {
     u8 dataoffset = pkt->Data[7];
     u8* pktdata = &pkt->Data[dataoffset];
-    u8* pktend = &pkt->Data[pkt->Length];
 
     // skip BDC header
     // TODO: pkt->Length includes extra padding
@@ -1519,7 +1532,7 @@ static void Wifi_HandleDataFrame(sPacket* pkt)
         return;
     }
 }
-int bib = 0;
+
 void Wifi_Update()
 {
     if (State == State_Joining)
@@ -1535,10 +1548,26 @@ void Wifi_Update()
 
     sys_check_timeouts();
 
-    if ((NetIf.ip_addr.addr != 0) && (!bib))
+    if (State == State_GettingIP)
     {
-        printf("ip = %08X\n", NetIf.ip_addr.addr);
-        bib = 1;
+        ip4_addr_t* addr = netif_ip4_addr(&NetIf);
+        if (!ip4_addr_isany(addr))
+        {
+            // we got an IP address
+            if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
+            JoinCB = NULL;
+            State = State_Joined;
+        }
+        else
+        {
+            u32 time = WUP_GetTicks() - JoinStartTimestamp;
+            if (time >= 10000)
+            {
+                if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
+                JoinCB = NULL;
+                Wifi_Disconnect();
+            }
+        }
     }
 
     if (CardIRQFlag)
@@ -1569,7 +1598,6 @@ void Wifi_Update()
         Wifi_SetClkEnable(0);
 }
 
-err_t NetIfOutput(struct netif* netif, struct pbuf* p);
 err_t NetIfInit(struct netif* netif)
 {
     if (!netif) return ERR_ARG;
@@ -1599,12 +1627,6 @@ err_t NetIfInit(struct netif* netif)
     netif->mtu = 1500; // checkme
     netif->flags = NETIF_FLAG_BROADCAST | NETIF_FLAG_ETHARP;
 
-    return ERR_OK;
-}
-
-err_t NetIfInput(struct pbuf* p, struct netif* inp)
-{
-    ethernet_input(p, inp);
     return ERR_OK;
 }
 
@@ -1640,13 +1662,13 @@ err_t NetIfOutput(struct netif* netif, struct pbuf* p)
     buf[7] = 14; // offset to data
     *(u32*)&buf[8] = 0; // ??
     *(u16*)&buf[12] = 0;
-    *(u16*)&buf[14] = 0x20; // ??? must be 0x10 or 0x20
+    *(u16*)&buf[14] = 0x20; // BDC header version
     *(u16*)&buf[16] = 0;
-    //send_binary(buf, totallen);
 
     // send frame
     u16 len_rounded = (totallen + 0x3F) & ~0x3F;
-    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
+    if (!SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0))
+        return ERR_IF;
 
     return ERR_OK;
 }
