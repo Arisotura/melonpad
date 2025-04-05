@@ -23,7 +23,7 @@ int Wifi_StartFwUpload()
     Wifi_AI_ResetCore(0, 0);
 
     u32 zero = 0;
-    SDIO_WriteF1Memory(RAMSize - 4, (u8*)&zero, 4);
+    SDIO_WriteF1Memory(RAMSize - 4, &zero, 4);
 
     return 1;
 }
@@ -115,7 +115,7 @@ int Wifi_UploadFirmware()
 
     u32 len_token = (nv_length >> 2) & 0xFFFF;
     len_token = len_token | ((~len_token) << 16);
-    if (!SDIO_WriteF1Memory(RAMSize - 4, (u8*)&len_token, 4))
+    if (!SDIO_WriteF1Memory(RAMSize - 4, &len_token, 4))
         return 0;
 
     free(tmpbuf);

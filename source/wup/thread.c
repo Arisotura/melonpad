@@ -92,7 +92,6 @@ typedef struct sMailbox
 {
     u32 Magic;
 
-    //sMutex* Mutex;
     sSemaphore* CountSema;
 
     u32 Size;
@@ -1131,19 +1130,11 @@ void* Mailbox_Create(u32 size)
 
     memset(mbox, 0, totalsize);
     mbox->Magic = Magic_Mailbox;
-    mbox->Count = size;
-
-    /*mbox->Mutex = Mutex_Create();
-    if (!mbox->Mutex)
-    {
-        free(mbox);
-        return NULL;
-    }*/
+    mbox->Size = size;
 
     mbox->CountSema = Semaphore_Create(0);
     if (!mbox->CountSema)
     {
-        //Mutex_Delete(mbox->Mutex);
         free(mbox);
         return NULL;
     }
@@ -1160,7 +1151,6 @@ void Mailbox_Delete(void* _mbox)
         return;
 
     Semaphore_Delete(mbox->CountSema);
-    //Mutex_Delete(mbox->Mutex);
     free(mbox);
 }
 

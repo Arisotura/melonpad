@@ -71,21 +71,21 @@ int SDIO_Init()
     // enable SD card funcs
 
     memset(SD_CISPtr, 0, sizeof(SD_CISPtr));
-    SDIO_ReadCardRegs(0, 0x9, 3, (u8*)&SD_CISPtr[0]);
+    SDIO_ReadCardRegs(0, 0x9, &SD_CISPtr[0], 3);
     for (int i = 1; i <= SD_NumFuncs; i++)
-        SDIO_ReadCardRegs(0, (0x100 * i) + 0x9, 3, (u8*)&SD_CISPtr[i]);
+        SDIO_ReadCardRegs(0, (0x100 * i) + 0x9, &SD_CISPtr[i], 3);
     for (int i = 0; i <= SD_NumFuncs; i++)
         SD_CISPtr[i] &= 0x1FFFF;
 
     u8 val = 0x02; // enable F1
-    if (!SDIO_WriteCardRegs(0, 0x2, 1, &val))
+    if (!SDIO_WriteCardRegs(0, 0x2, &val, 1))
         return 0;
 
     SD_F1Base = 0;
     SDIO_SetF1Base(0x18000000);
 
     /*u16 chipid = 0;
-    SDIO_ReadCardRegs(1, 0x0, 2, (u8*)&chipid);
+    SDIO_ReadCardRegs(1, 0x0, &chipid, 2);
 
     // verify the chip ID
     // these are the chip IDs the stock firmware supports
@@ -108,32 +108,32 @@ int SDIO_Init()
     SDIO_SetBusWidth(4);
 
     u16 blocksize = 64;
-    SDIO_WriteCardRegs(0, 0x110, 2, (u8*)&blocksize);
+    SDIO_WriteCardRegs(0, 0x110, &blocksize, 2);
     if (SD_NumFuncs > 1)
     {
         blocksize = 64;//512;
-        SDIO_WriteCardRegs(0, 0x210, 2, (u8*)&blocksize);
+        SDIO_WriteCardRegs(0, 0x210, &blocksize, 2);
     }
 
     u8 fn_ints = (1<<0);
     fn_ints |= (1<<1); // F1
     if (SD_NumFuncs > 1)
         fn_ints |= (1<<2); // F2
-    SDIO_WriteCardRegs(0, 0x4, 1, &fn_ints);
+    SDIO_WriteCardRegs(0, 0x4, &fn_ints, 1);
 
     if (SD_Caps & SD_CAP_HISPEED)
     {
         u8 hostcnt = REG_SD_HOSTCNT;
 
         u8 speedcnt = 0;
-        SDIO_ReadCardRegs(0, 0x13, 1, &speedcnt);
+        SDIO_ReadCardRegs(0, 0x13, &speedcnt, 1);
         if (speedcnt & (1<<0))
         {
             printf("SDIO: enabling high-speed mode\n");
 
             speedcnt |= (1<<1); // enable hi-speed
-            SDIO_WriteCardRegs(0, 0x13, 1, &speedcnt);
-            SDIO_ReadCardRegs(0, 0x13, 1, &speedcnt);
+            SDIO_WriteCardRegs(0, 0x13, &speedcnt, 1);
+            SDIO_ReadCardRegs(0, 0x13, &speedcnt, 1);
 
             hostcnt |= (1<<2);
         }
@@ -340,11 +340,11 @@ int SDIO_SetClocks(int sdclk, int htclk)
         SDIO_EnableClock(1);
 
     u8 clkstat = 0;
-    SDIO_ReadCardRegs(1, 0x1000E, 1, &clkstat);
+    SDIO_ReadCardRegs(1, 0x1000E, &clkstat, 1);
     if (htclk != (clkstat & 0x3F))
     {
         u8 clkreg = htclk;
-        SDIO_WriteCardRegs(1, 0x1000E, 1, &clkreg);
+        SDIO_WriteCardRegs(1, 0x1000E, &clkreg, 1);
         WUP_DelayUS(1);
 
         clkreg = htclk & 0x18;
@@ -354,7 +354,7 @@ int SDIO_SetClocks(int sdclk, int htclk)
             u8 readybit = (clkreg == SDIO_CLOCK_REQ_HT) ? SDIO_CLOCK_HT_AVAIL : SDIO_CLOCK_ALP_AVAIL;
             for (;;)
             {
-                SDIO_ReadCardRegs(1, 0x1000E, 1, &clkreg);
+                SDIO_ReadCardRegs(1, 0x1000E, &clkreg, 1);
                 if (clkreg & readybit)
                     break;
 
@@ -492,7 +492,7 @@ int SDIO_GetOCR(u32 arg, u32* resp)
     }
 }
 
-int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
+int SDIO_ReadCardRegs(int func, u32 addr, void* data, int len)
 {
     Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
@@ -513,7 +513,7 @@ int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
         if ((resp & 0xFF00) != 0x1000)
             printf("SDIO_ReadCardRegs: ??? resp=%08X\n", resp);
 
-        val[i] = resp & 0xFF;
+        ((u8*)data)[i] = resp & 0xFF;
         addr++;
     }
 
@@ -522,7 +522,7 @@ int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
     return 1;
 }
 
-int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
+int SDIO_WriteCardRegs(int func, u32 addr, void* data, int len)
 {
     Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
@@ -530,7 +530,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
 
     for (int i = 0; i < len; i++)
     {
-        u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9) | val[i];
+        u32 cmdarg = (1 << 31) | (func << 28) | ((addr & 0x1FFFF) << 9) | ((u8*)data)[i];
         if (!SDIO_SendCommand(52, cmdarg))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
@@ -551,7 +551,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
     return 1;
 }
 
-int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
+int SDIO_ReadCardData(int func, u32 addr, void* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
@@ -665,6 +665,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             return 0;
         }
 
+        u8* bdata = (u8*)data;
         int words = len >> 2;
         int i;
         if (((u32)data) & 0x3)
@@ -672,29 +673,29 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             for (i = 0; i < words; i++)
             {
                 u32 val = REG_SD_DATAPORT32;
-                data[i*4+0] = val & 0xFF;
-                data[i*4+1] = (val >> 8) & 0xFF;
-                data[i*4+2] = (val >> 16) & 0xFF;
-                data[i*4+3] = val >> 24;
+                bdata[i*4+0] = val & 0xFF;
+                bdata[i*4+1] = (val >> 8) & 0xFF;
+                bdata[i*4+2] = (val >> 16) & 0xFF;
+                bdata[i*4+3] = val >> 24;
             }
 
             if (len & 2)
             {
                 u16 val = REG_SD_DATAPORT16;
-                data[i*4+0] = val & 0xFF;
-                data[i*4+1] = val >> 8;
+                bdata[i*4+0] = val & 0xFF;
+                bdata[i*4+1] = val >> 8;
             }
         }
         else
         {
             for (i = 0; i < words; i++)
-                ((u32*)data)[i] = REG_SD_DATAPORT32;
+                ((u32*)bdata)[i] = REG_SD_DATAPORT32;
 
             if (len & 2)
-                ((u16*)data)[i*2] = REG_SD_DATAPORT16;
+                ((u16*)bdata)[i*2] = REG_SD_DATAPORT16;
         }
         if (len & 1)
-            data[i*4+2] = REG_SD_DATAPORT8;
+            bdata[i*4+2] = REG_SD_DATAPORT8;
     }
 
     if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
@@ -712,7 +713,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     return 1;
 }
 
-int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
+int SDIO_WriteCardData(int func, u32 addr, void* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
@@ -826,6 +827,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             return 0;
         }
 
+        u8* bdata = (u8*)data;
         int words = len >> 2;
         int i;
         if (((u32)data) & 0x3)
@@ -833,32 +835,32 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
             for (i = 0; i < words; i++)
             {
                 u32 val;
-                val = data[i*4+0];
-                val |= (data[i*4+1] << 8);
-                val |= (data[i*4+2] << 16);
-                val |= (data[i*4+3] << 24);
+                val = bdata[i*4+0];
+                val |= (bdata[i*4+1] << 8);
+                val |= (bdata[i*4+2] << 16);
+                val |= (bdata[i*4+3] << 24);
                 REG_SD_DATAPORT32 = val;
             }
 
             if (len & 2)
             {
                 u16 val;
-                val = data[i*4+0];
-                val |= (data[i*4+1] << 8);
+                val = bdata[i*4+0];
+                val |= (bdata[i*4+1] << 8);
                 REG_SD_DATAPORT16 = val;
             }
         }
         else
         {
             for (i = 0; i < words; i++)
-                REG_SD_DATAPORT32 = ((u32*)data)[i];
+                REG_SD_DATAPORT32 = ((u32*)bdata)[i];
 
             if (len & 2)
-                REG_SD_DATAPORT16 = ((u16*)data)[i*2];
+                REG_SD_DATAPORT16 = ((u16*)bdata)[i*2];
         }
 
         if (len & 1)
-            REG_SD_DATAPORT8 = data[i*4+2];
+            REG_SD_DATAPORT8 = bdata[i*4+2];
     }
 
     if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
@@ -878,13 +880,13 @@ void SDIO_SetBusWidth(int width)
     u8 regval;
     Mutex_Acquire(Mutex, NoTimeout);
 
-    SDIO_ReadCardRegs(0, 0x7, 1, &regval);
+    SDIO_ReadCardRegs(0, 0x7, &regval, 1);
     regval &= ~3;
 
     if (width == 4)
         regval |= 0x2; // 4-bit bus
 
-    SDIO_WriteCardRegs(0, 0x7, 1, &regval);
+    SDIO_WriteCardRegs(0, 0x7, &regval, 1);
 
     regval = REG_SD_HOSTCNT;
     regval &= ~0x2;
@@ -908,7 +910,7 @@ int SDIO_SetF1Base(u32 addr)
     addrparts[0] = (addr >> 8) & 0x80;
     addrparts[1] = (addr >> 16) & 0xFF;
     addrparts[2] = (addr >> 24) & 0xFF;
-    if (!SDIO_WriteCardRegs(1, 0x1000A, 3, addrparts))
+    if (!SDIO_WriteCardRegs(1, 0x1000A, addrparts, 3))
     {
         Mutex_Release(Mutex);
         return 0;
@@ -919,7 +921,7 @@ int SDIO_SetF1Base(u32 addr)
     return 1;
 }
 
-int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
+int SDIO_ReadF1Memory(u32 addr, void* data, int len)
 {
     Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
@@ -948,7 +950,7 @@ int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
 
         i += chunk;
         addr += chunk;
-        data += chunk;
+        data = (void*)(((u8*)data) + chunk);
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
@@ -956,7 +958,7 @@ int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
     return 1;
 }
 
-int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
+int SDIO_WriteF1Memory(u32 addr, void* data, int len)
 {
     Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
@@ -985,7 +987,7 @@ int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
 
         i += chunk;
         addr += chunk;
-        data += chunk;
+        data = (void*)(((u8*)data) + chunk);
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;

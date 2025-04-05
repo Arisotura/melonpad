@@ -29,7 +29,7 @@ static u32 GetEROMEntry(u32* addr, u32 mask, u32 wanted)
     u32 entry = 0;
     for (;;)
     {
-        SDIO_ReadF1Memory(*addr, (u8*)&entry, 4);
+        SDIO_ReadF1Memory(*addr, &entry, 4);
         *addr += 4;
 
         if (!mask)
@@ -85,7 +85,7 @@ static u32 GetAddrDesc(u32* addr, u32 wanted, u32* addrlo, u32* addrhi, u32* siz
 int Wifi_AI_Enumerate()
 {
     u32 chipid = 0;
-    if (!SDIO_ReadF1Memory(0x18000000, (u8*)&chipid, 4))
+    if (!SDIO_ReadF1Memory(0x18000000, &chipid, 4))
         return 0;
 
     if ((chipid >> 28) != 1)
@@ -95,7 +95,7 @@ int Wifi_AI_Enumerate()
     }
 
     u32 eromptr = 0;
-    SDIO_ReadF1Memory(0x180000FC, (u8*)&eromptr, 4);
+    SDIO_ReadF1Memory(0x180000FC, &eromptr, 4);
 
     NumCores = 0;
     u32 eromend = eromptr + 0xE00;
@@ -251,7 +251,7 @@ u32 Wifi_AI_GetRAMSize()
 
     u32 rev = (CurCore->CIb >> 24) & 0xFF;
     u32 info = 0;
-    SDIO_ReadF1Memory(CurCore->MemBase+0x000, (u8*)&info, 4);
+    SDIO_ReadF1Memory(CurCore->MemBase+0x000, &info, 4);
 
     u32 ret;
     if (rev == 0)
@@ -312,24 +312,24 @@ u32 Wifi_AI_GetCoreMemBase()
 u32 Wifi_AI_ReadCoreMem(u32 addr)
 {
     u32 val;
-    SDIO_ReadF1Memory(CurCore->MemBase + addr, (u8*)&val, 4);
+    SDIO_ReadF1Memory(CurCore->MemBase + addr, &val, 4);
     return val;
 }
 
 void Wifi_AI_WriteCoreMem(u32 addr, u32 val)
 {
-    SDIO_WriteF1Memory(CurCore->MemBase + addr, (u8*)&val, 4);
+    SDIO_WriteF1Memory(CurCore->MemBase + addr, &val, 4);
 }
 
 int Wifi_AI_IsCoreUp()
 {
     u32 regval = 0;
 
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
     if ((regval & 0x03) != 0x01)
         return 0;
 
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, &regval, 4);
     if (regval & (1<<0)) // already in reset
         return 0;
 
@@ -339,17 +339,17 @@ int Wifi_AI_IsCoreUp()
 void Wifi_AI_DisableCore(u32 ctrl)
 {
     u32 regval = 0;
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x800, &regval, 4);
     if (regval & (1<<0)) // already in reset
         return;
 
     regval = ctrl;
-    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
+    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
     WUP_DelayUS(1);
 
     regval = (1<<0); // reset
-    SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
+    SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, &regval, 4);
     WUP_DelayUS(1);
 }
 
@@ -360,15 +360,15 @@ void Wifi_AI_ResetCore(u32 ctrl, u32 resetctrl)
     Wifi_AI_DisableCore(ctrl | resetctrl);
 
     regval = ctrl | (1<<0) | (1<<1);
-    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
+    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
 
     regval = 0;
-    SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, (u8*)&regval, 4);
+    SDIO_WriteF1Memory(CurCore->WrapperBase+0x800, &regval, 4);
     WUP_DelayUS(1);
 
     regval = ctrl | (1<<0);
-    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
-    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, (u8*)&regval, 4);
+    SDIO_WriteF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
+    SDIO_ReadF1Memory(CurCore->WrapperBase+0x408, &regval, 4);
     WUP_DelayUS(1);
 }
