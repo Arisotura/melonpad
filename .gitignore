@@ -2,3 +2,5 @@
 *.elf
 *.fw
 build/*
+
+!wlnvram.bin
