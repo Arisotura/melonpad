@@ -85,7 +85,7 @@
  * lwIP functions/structures from more than one context at a time!)
  */
 #if !defined NO_SYS || defined __DOXYGEN__
-#define NO_SYS                          1
+#define NO_SYS                          0
 #endif
 /**
  * @}
@@ -1842,7 +1842,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined TCPIP_THREAD_STACKSIZE || defined __DOXYGEN__
-#define TCPIP_THREAD_STACKSIZE          0
+#define TCPIP_THREAD_STACKSIZE          0x1000
 #endif
 
 /**
@@ -1851,7 +1851,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined TCPIP_THREAD_PRIO || defined __DOXYGEN__
-#define TCPIP_THREAD_PRIO               1
+#define TCPIP_THREAD_PRIO               4
 #endif
 
 /**
@@ -1884,7 +1884,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined SLIPIF_THREAD_STACKSIZE || defined __DOXYGEN__
-#define SLIPIF_THREAD_STACKSIZE         0
+#define SLIPIF_THREAD_STACKSIZE         0x1000
 #endif
 
 /**
@@ -1893,7 +1893,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined SLIPIF_THREAD_PRIO || defined __DOXYGEN__
-#define SLIPIF_THREAD_PRIO              1
+#define SLIPIF_THREAD_PRIO              4
 #endif
 
 /**
@@ -1909,7 +1909,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined DEFAULT_THREAD_STACKSIZE || defined __DOXYGEN__
-#define DEFAULT_THREAD_STACKSIZE        0
+#define DEFAULT_THREAD_STACKSIZE        0x1000
 #endif
 
 /**
@@ -1918,7 +1918,7 @@
  * sys_thread_new() when the thread is created.
  */
 #if !defined DEFAULT_THREAD_PRIO || defined __DOXYGEN__
-#define DEFAULT_THREAD_PRIO             1
+#define DEFAULT_THREAD_PRIO             4
 #endif
 
 /**
@@ -2024,7 +2024,7 @@
  * LWIP_SOCKET==1: Enable Socket API (require to use sockets.c)
  */
 #if !defined LWIP_SOCKET || defined __DOXYGEN__
-#define LWIP_SOCKET                     0
+#define LWIP_SOCKET                     1
 #endif
 
 /**

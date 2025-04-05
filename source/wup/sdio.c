@@ -14,16 +14,24 @@ static u32 SD_CISPtr[7];
 
 static u32 SD_F1Base;
 
-static volatile u16 IRQFlags;
+//static volatile u16 IRQFlags;
+static void* IRQEventMask;
 static volatile u16 ErrorFlags;
+
+static void* Mutex;
 
 
 int SDIO_Init()
 {
     SD_Caps = REG_SD_CAPS;
 
-    IRQFlags = 0;
+    //IRQFlags = 0;
+    IRQEventMask = EventMask_Create();
+    if (!IRQEventMask) return 0;
     ErrorFlags = 0;
+
+    Mutex = Mutex_Create();
+    if (!Mutex) return 0;
 
     // reset host
     REG_SD_SOFTRESET = SD_RESET_ALL;
@@ -143,12 +151,24 @@ int SDIO_Init()
 
 void SDIO_EnableCardIRQ()
 {
+    //_write(1, "card on\n", 8);
     REG_SD_IRQSIGNALENABLE |= SD_IRQ_CARD_IRQ;
 }
 
 void SDIO_DisableCardIRQ()
 {
+    //_write(1, "card off\n", 9);
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
+}
+
+void SDIO_Lock()
+{
+    Mutex_Acquire(Mutex, NoTimeout);
+}
+
+void SDIO_Unlock()
+{
+    Mutex_Release(Mutex);
 }
 
 void SDIO_IRQHandler(int irq, void* userdata)
@@ -163,6 +183,7 @@ void SDIO_IRQHandler(int irq, void* userdata)
         u16 oldenable = REG_SD_IRQSTATUSENABLE;
         REG_SD_IRQSTATUSENABLE = oldenable & ~SD_IRQ_CARD_IRQ;
 
+        //_write(1, "card IRQ\n", 9);
         Wifi_CardIRQ();
 
         REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
@@ -184,13 +205,17 @@ void SDIO_IRQHandler(int irq, void* userdata)
     if (irqreg)
     {
         REG_SD_IRQSTATUS = irqreg;
-        IRQFlags |= irqreg;
+        if (irqreg & SD_IRQ_ERROR)
+            ErrorFlags = REG_SD_EIRQSTATUS;
+
+        //IRQFlags |= irqreg;
+        EventMask_Signal(IRQEventMask, irqreg);
     }
 }
 
 int SDIO_WaitForIRQ(u16 irq)
 {
-    for (;;)
+    /*for (;;)
     {
         if (IRQFlags & SD_IRQ_ERROR)
         {
@@ -206,7 +231,16 @@ int SDIO_WaitForIRQ(u16 irq)
         }
 
         WaitForIRQ();
-    }
+    }*/
+    u32 timeout = NoTimeout;
+    u32 res = 0;
+    EventMask_Wait(IRQEventMask, irq | SD_IRQ_ERROR, timeout, &res);
+    EventMask_Clear(IRQEventMask, res);
+
+    if (res & SD_IRQ_ERROR)
+        return 0;
+
+    return 1;
 }
 
 
@@ -217,6 +251,7 @@ int SDIO_EnableClock(u16 div)
     if ((REG_SD_CLOCKCNT & 0xFF04) == (div_reg | (1<<2)))
         return 1;
 
+    Mutex_Acquire(Mutex, NoTimeout);
     REG_SD_CLOCKCNT &= ~(1<<2);
 
     REG_SD_CLOCKCNT = (REG_SD_CLOCKCNT & ~0xFF00) | (div_reg & 0xFF00);
@@ -240,6 +275,7 @@ int SDIO_EnableClock(u16 div)
     REG_SD_EIRQSTATUSENABLE = eintenable;
 
     WUP_DelayUS(2);
+    Mutex_Release(Mutex);
     return 1;
 }
 
@@ -248,8 +284,10 @@ int SDIO_DisableClock()
     if (!(REG_SD_CLOCKCNT & (1<<2)))
         return 1;
 
+    Mutex_Acquire(Mutex, NoTimeout);
     REG_SD_CLOCKCNT &= ~(1<<2);
     WUP_DelayUS(2);
+    Mutex_Release(Mutex);
     return 1;
 }
 
@@ -263,26 +301,38 @@ int SDIO_EnablePower()
     else if (SD_Caps & SD_CAP_33V)
         volts = 7;
 
+    Mutex_Acquire(Mutex, NoTimeout);
     REG_SD_POWERCNT = SD_POWER_BUS_ENABLE | SD_POWER_VOLTS(volts);
     WUP_DelayMS(250);
     printf("REG_SD_POWERCNT=%02X\n", REG_SD_POWERCNT);
 
     u32 ocr_resp = 0;
     if (!SDIO_GetOCR(0, &ocr_resp))
-    {printf("OCR fail\n"); return 0;}
+    {
+        printf("OCR fail\n");
+        Mutex_Release(Mutex);
+        return 0;
+    }
 
     SD_NumFuncs = (ocr_resp >> 30) & 0x7;
     if (SD_NumFuncs == 0)
-    {printf("numfuncs=%d\n", SD_NumFuncs); return 0;}
+    {
+        printf("numfuncs=%d\n", SD_NumFuncs);
+        Mutex_Release(Mutex);
+        return 0;
+    }
 
     printf("OCR=%08X funcs=%d\n", ocr_resp, SD_NumFuncs);
     SDIO_GetOCR(0xFFF000, &ocr_resp);
     printf("OCR2=%08X\n", ocr_resp);
+    Mutex_Release(Mutex);
     return 1;
 }
 
 int SDIO_SetClocks(int sdclk, int htclk)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
+
     if (sdclk) htclk &= 0x3F;
     else       htclk = 0;
 
@@ -316,11 +366,13 @@ int SDIO_SetClocks(int sdclk, int htclk)
     if (!sdclk)
         SDIO_DisableClock();
 
+    Mutex_Release(Mutex);
     return 1;
 }
 
 int SDIO_SendCommand(u32 cmd, u32 arg)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -331,6 +383,7 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
         if (retries <= 0)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
     }
@@ -378,50 +431,70 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
     default:
         printf("SDIO: unknown command %d\n", cmd);
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
-    IRQFlags = 0;
+    //IRQFlags = 0;
+    EventMask_Clear(IRQEventMask, 0xFFFF & ~SD_IRQ_CARD_IRQ);
     REG_SD_ARG = arg;
     REG_SD_COMMAND = cmdreg;
 
     if (!SDIO_WaitForIRQ(SD_IRQ_CMD_DONE))
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
 void SDIO_ReadResponse(u32* resp, int len)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
+
     if (len > 4) len = 4;
     for (int i = 0; i < len; i++)
         resp[i] = REG_SD_RESPONSE[i];
+
+    Mutex_Release(Mutex);
 }
 
 int SDIO_GetOCR(u32 arg, u32* resp)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
+
     int retries = 200;
     for (;;)
     {
         if (!SDIO_SendCommand(5, arg))
+        {
+            Mutex_Release(Mutex);
             return 0;
+        }
 
         SDIO_ReadResponse(resp, 1);
         if (resp[0] & (1<<31)) // card ready
+        {
+            Mutex_Release(Mutex);
             return 1;
+        }
 
         retries--;
         if (retries <= 0)
+        {
+            Mutex_Release(Mutex);
             return 0;
+        }
     }
 }
 
 int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -431,6 +504,7 @@ int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
         if (!SDIO_SendCommand(52, cmdarg))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -444,11 +518,13 @@ int SDIO_ReadCardRegs(int func, u32 addr, int len, u8* val)
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
 int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -458,6 +534,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
         if (!SDIO_SendCommand(52, cmdarg))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -470,6 +547,7 @@ int SDIO_WriteCardRegs(int func, u32 addr, int len, u8* val)
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
@@ -477,6 +555,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -487,6 +566,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (retries <= 0)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
     }
@@ -504,6 +584,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (len & (blocksize-1))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -512,6 +593,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (blocknum > 0x200)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -545,6 +627,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (retries <= 0)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
     }
@@ -560,6 +643,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (!SDIO_SendCommand(53, cmdarg))
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
@@ -568,6 +652,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if ((resp & 0xFF00) != 0x1000)
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
@@ -576,6 +661,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (!SDIO_WaitForIRQ(SD_IRQ_READ_READY))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -614,6 +700,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
@@ -621,6 +708,7 @@ int SDIO_ReadCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         DC_InvalidateRange(data, len);
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
@@ -628,6 +716,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
 {
     if (func == 0) return 0;
 
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -638,6 +727,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (retries <= 0)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
     }
@@ -655,6 +745,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (len & (blocksize-1))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -663,6 +754,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (blocknum > 0x200)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -696,6 +788,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (retries <= 0)
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
     }
@@ -711,6 +804,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (!SDIO_SendCommand(53, cmdarg))
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
@@ -719,6 +813,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if ((resp & 0xFF00) != 0x1000)
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
@@ -727,6 +822,7 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
         if (!SDIO_WaitForIRQ(SD_IRQ_WRITE_READY))
         {
             REG_SD_IRQSIGNALENABLE = oldirq;
+            Mutex_Release(Mutex);
             return 0;
         }
 
@@ -768,16 +864,20 @@ int SDIO_WriteCardData(int func, u32 addr, u8* data, int len, int incr_addr)
     if (!SDIO_WaitForIRQ(SD_IRQ_TRANSFER_DONE))
     {
         REG_SD_IRQSIGNALENABLE = oldirq;
+        Mutex_Release(Mutex);
         return 0;
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
 void SDIO_SetBusWidth(int width)
 {
     u8 regval;
+    Mutex_Acquire(Mutex, NoTimeout);
+
     SDIO_ReadCardRegs(0, 0x7, 1, &regval);
     regval &= ~3;
 
@@ -793,6 +893,7 @@ void SDIO_SetBusWidth(int width)
         regval |= 0x2; // 4-bit bus
 
     REG_SD_HOSTCNT = regval;
+    Mutex_Release(Mutex);
 }
 
 int SDIO_SetF1Base(u32 addr)
@@ -801,19 +902,26 @@ int SDIO_SetF1Base(u32 addr)
     if (addr == SD_F1Base)
         return 1;
 
+    Mutex_Acquire(Mutex, NoTimeout);
+
     u8 addrparts[3];
     addrparts[0] = (addr >> 8) & 0x80;
     addrparts[1] = (addr >> 16) & 0xFF;
     addrparts[2] = (addr >> 24) & 0xFF;
     if (!SDIO_WriteCardRegs(1, 0x1000A, 3, addrparts))
+    {
+        Mutex_Release(Mutex);
         return 0;
+    }
 
     SD_F1Base = addr;
+    Mutex_Release(Mutex);
     return 1;
 }
 
 int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -844,11 +952,13 @@ int SDIO_ReadF1Memory(u32 addr, u8* data, int len)
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }
 
 int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
     u16 oldirq = REG_SD_IRQSIGNALENABLE;
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 
@@ -879,5 +989,6 @@ int SDIO_WriteF1Memory(u32 addr, u8* data, int len)
     }
 
     REG_SD_IRQSIGNALENABLE = oldirq;
+    Mutex_Release(Mutex);
     return 1;
 }

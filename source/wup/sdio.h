@@ -15,6 +15,9 @@ int SDIO_Init();
 void SDIO_EnableCardIRQ();
 void SDIO_DisableCardIRQ();
 
+void SDIO_Lock();
+void SDIO_Unlock();
+
 int SDIO_EnableClock(u16 div);
 int SDIO_EnablePower();
 int SDIO_SetClocks(int sdclk, int htclk);

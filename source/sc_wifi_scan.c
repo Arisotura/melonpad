@@ -272,8 +272,10 @@ static void ScanCallback(sScanInfo* list, int num)
 {
     // add in the new entries
     sScanInfo* info = list;
+    printf("results returned: %p, %d\n", list, num);
     while (info)
     {
+        printf("res: %s\n", info->SSID);
         lv_obj_t* btn = lv_list_add_button(ScanList, NULL, info->SSID);
         lv_obj_add_event_cb(btn, OnSelectAP, LV_EVENT_CLICKED, info);
 

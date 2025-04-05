@@ -51,8 +51,8 @@ vec_reset:
 	ldr r3, =WUP_Init
 	blx r3
 
-	ldr r3, =__libc_init_array
-    blx r3
+	//ldr r3, =__libc_init_array
+    //blx r3
 
 	ldr r3, =main
 	blx r3
@@ -68,8 +68,36 @@ vec_irq:
 	stmdb sp!, {r0-r3, r12, lr}
 	ldr r3, =IRQHandler
 	blx r3
+	cmp r0, #0
 	ldmia sp!, {r0-r3, r12, lr}
-	subs pc, lr, #4
+	subeqs pc, lr, #4
+
+    stmdb sp!, {r3, r12}
+    stmdb sp!, {sp}^
+    ldmia sp!, {r12}
+    mrs r3, spsr
+    stmdb r12, {r3, lr}     @ store SPSR and LR on user stack
+    ldmia sp!, {r3, r12}
+
+    msr cpsr_c, #0xDF
+    sub sp, sp, #8
+    stmdb sp!, {r0-r3, r12, lr}
+
+    ldr r3, =Thread_Switch
+    blx r3
+
+    ldmia sp!, {r0-r3, r12, lr}
+    add sp, sp, #8
+    msr cpsr_c, #0xD2
+
+    stmdb sp!, {r3, r12}
+    stmdb sp!, {sp}^
+    ldmia sp!, {r12}
+    ldmdb r12, {r3, lr}     @ restore SPSR and LR
+    msr spsr, r3
+    ldmia sp!, {r3, r12}
+    subs pc, lr, #4
+
 
 vec_undefined:
 vec_prefabort:

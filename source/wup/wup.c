@@ -12,11 +12,16 @@ typedef struct
 sIRQHandlerEntry IRQTable[40];
 
 
+void __libc_init_array();
+
 volatile u8 Timer0Flag;
 void Timer0IRQ(int irq, void* userdata);
 
 volatile u32 TickCount;
 void Timer1IRQ(int irq, void* userdata);
+
+u32 Thread_PostIRQ();
+void Thread_Tick();
 
 
 void WUP_Init()
@@ -202,6 +207,8 @@ void WUP_Init()
     // reset count-up timer
     REG_COUNTUP_VALUE = 0;
 
+    Thread_Init();
+    __libc_init_array();
     EnableIRQ();
 
     REG_TIMER_CNT(0) = 0;
@@ -291,7 +298,7 @@ void WUP_DisableIRQ(u8 irq)
     RestoreIRQ(irqen);
 }
 
-void IRQHandler()
+u32 IRQHandler()
 {
     u32 irqnum = REG_IRQ_CURRENT;
     u32 ack = REG_IRQ_ACK_KEY;
@@ -308,6 +315,8 @@ void IRQHandler()
     }
 
     REG_IRQ_ACK = ack;
+
+    return Thread_PostIRQ();
 }
 
 
@@ -319,6 +328,7 @@ void Timer0IRQ(int irq, void* userdata)
 void Timer1IRQ(int irq, void* userdata)
 {
     TickCount++;
+    Thread_Tick();
 }
 
 void WUP_DelayUS(int us)

@@ -505,7 +505,7 @@ void NwConnect()
 }
 
 void NwDisconnect()
-{
+{return;
     Wifi_Disconnect();
     NwSetState(0);
 }
@@ -588,8 +588,6 @@ void PwUpdate()
 }
 
 
-
-
 void main()
 {
     // set VMatch positions to fire every ~5.5ms
@@ -656,8 +654,9 @@ void main()
     scCloseData = NULL;
 
     ScOpen(&scBootMenu, NULL);
-    nwDoConnect = 1;
-    NwConnect();
+    //nwDoConnect = 1;
+    //NwConnect();
+    nwDoConnect = 0;
 
 	for (;;)
 	{
@@ -671,6 +670,7 @@ void main()
         PwUpdate();
 
         lv_timer_periodic_handler();
-        Video_WaitForVMatch();
+        //Video_WaitForVMatch();
+        Thread_Sleep(5);
 	}
 }

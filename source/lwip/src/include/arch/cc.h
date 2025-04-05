@@ -20,11 +20,17 @@
 #define PACK_STRUCT_END
 
 #define LWIP_PLATFORM_DIAG(x) printf(x)
-#define LWIP_PLATFORM_ASSERT(x) do { printf(x); for (;;); } while (0)
+#define LWIP_PLATFORM_ASSERT(x) do { printf(x); DisableIRQ(); for (;;); } while (0)
 
 // DO MORE PROPERLY!!
-#define SYS_ARCH_PROTECT(x) DisableIRQ()
-#define SYS_ARCH_UNPROTECT(x) RestoreIRQ(x)
-#define SYS_ARCH_DECL_PROTECT(x) int x
+/*#define SYS_ARCH_PROTECT(x) do { x = DisableIRQ(); } while (0)
+#define SYS_ARCH_UNPROTECT(x) do { RestoreIRQ(x); } while (0)
+#define SYS_ARCH_DECL_PROTECT(x) int x*/
+
+#define LWIP_ERRNO_STDINCLUDE
+
+#ifndef sys_msleep
+#define sys_msleep sys_msleep
+#endif
 
 #endif // _ARCH_CC_H_

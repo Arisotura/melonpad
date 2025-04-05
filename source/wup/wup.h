@@ -4,9 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <malloc.h>
 
 #include "types.h"
 #include "regs.h"
+
+#include "thread.h"
 
 #include "dma.h"
 #include "spi.h"
@@ -22,6 +25,7 @@
 #include "sdio.h"
 #include "wifi.h"
 #include "wifi_ai.h"
+#include "wifi_firmware.h"
 
 #include "console.h"
 #include "input.h"
