@@ -1,8 +1,8 @@
 #include <wup/wup.h>
 
 
-volatile u8 DMA_IRQFlag[5];
-void DMA_IRQHandler(int irq, void* userdata);
+static void* IRQEvent;
+static void DMA_IRQHandler(int irq, void* userdata);
 
 
 void DMA_Init()
@@ -11,7 +11,7 @@ void DMA_Init()
     REG_DMA_CNT |= 0x8001;
     REG_DMA_CNT &= ~0xFC;
 
-    memset(DMA_IRQFlag, 0, sizeof(DMA_IRQFlag));
+    IRQEvent = EventMask_Create();
     WUP_SetIRQHandler(IRQ_SPDMA0, DMA_IRQHandler, NULL, 0);
     WUP_SetIRQHandler(IRQ_SPDMA1, DMA_IRQHandler, NULL, 0);
     WUP_SetIRQHandler(IRQ_GPDMA0, DMA_IRQHandler, NULL, 0);
@@ -20,16 +20,20 @@ void DMA_Init()
 }
 
 
-void DMA_IRQHandler(int irq, void* userdata)
+static void DMA_IRQHandler(int irq, void* userdata)
 {
+    u32 mask;
     switch (irq)
     {
-        case IRQ_SPDMA0: DMA_IRQFlag[0] = 1; break;
-        case IRQ_SPDMA1: DMA_IRQFlag[1] = 1; break;
-        case IRQ_GPDMA0: DMA_IRQFlag[2] = 1; break;
-        case IRQ_GPDMA1: DMA_IRQFlag[3] = 1; break;
-        case IRQ_GPDMA2: DMA_IRQFlag[4] = 1; break;
+    case IRQ_SPDMA0: mask = (1<<0); break;
+    case IRQ_SPDMA1: mask = (1<<1); break;
+    case IRQ_GPDMA0: mask = (1<<2); break;
+    case IRQ_GPDMA1: mask = (1<<3); break;
+    case IRQ_GPDMA2: mask = (1<<4); break;
+    default: return;
     }
+
+    EventMask_Signal(IRQEvent, mask);
 }
 
 
@@ -39,7 +43,7 @@ void SPDMA_Transfer(u32 chan, const void* data, u32 peri, u32 dir, u32 len)
 
     SPDMA_Wait(chan);
 
-    DMA_IRQFlag[chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << chan));
     REG_SPDMA_CNT(chan) = dir | peri;
     REG_SPDMA_UNK08(chan) = 0;
     REG_SPDMA_UNK0C(chan) = 0;
@@ -54,8 +58,7 @@ void SPDMA_Wait(u32 chan)
 
     if (REG_SPDMA_START(chan) & SPDMA_BUSY)
     {
-        while (!DMA_IRQFlag[chan])
-            WaitForIRQ();
+        EventMask_Wait(IRQEvent, (1 << chan), NoTimeout, NULL);
     }
 
     REG_SPDMA_START(chan) = SPDMA_STOP;
@@ -68,7 +71,7 @@ void GPDMA_Transfer(u32 chan, const void* src, void* dst, u32 len)
 
     GPDMA_Wait(chan);
 
-    DMA_IRQFlag[2+chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT;
     REG_GPDMA_LINELEN(chan) = len;
     REG_GPDMA_SRCSTRIDE(chan) = len;
@@ -99,7 +102,7 @@ void GPDMA_Fill(u32 chan, int fillval, int fill16, void* dst, u32 len)
         fillval &= 0xFF;
     }
 
-    DMA_IRQFlag[2+chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_SIMPLE_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = len;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
@@ -118,7 +121,7 @@ void GPDMA_BlitTransfer(u32 chan, const void* src, u32 srcstride, void* dst, u32
 
     GPDMA_Wait(chan);
 
-    DMA_IRQFlag[2+chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT;
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = srcstride;
@@ -149,7 +152,7 @@ void GPDMA_BlitFill(u32 chan, int fillval, int fill16, void* dst, u32 dststride,
         fillval &= 0xFF;
     }
 
-    DMA_IRQFlag[2+chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_SIMPLE_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
@@ -190,7 +193,7 @@ void GPDMA_BlitMaskedFill(u32 chan, const void* mask, int fillfg, int fillbg, in
         fillbg &= 0xFF;
     }
 
-    DMA_IRQFlag[2+chan] = 0;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
     REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_MASKED_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
@@ -209,8 +212,7 @@ void GPDMA_Wait(u32 chan)
 
     if (REG_GPDMA_START(chan) & GPDMA_BUSY)
     {
-        while (!DMA_IRQFlag[2+chan])
-            WaitForIRQ();
+        EventMask_Wait(IRQEvent, (1 << (2+chan)), NoTimeout, NULL);
     }
 
     REG_GPDMA_START(chan) = GPDMA_STOP;

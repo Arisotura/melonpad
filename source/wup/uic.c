@@ -302,8 +302,10 @@ void UIC_WriteDisable()
 {
     if (!UICGood) return;
 
+    SPI_Lock();
     UIC_SendCommand(0x04, NULL, 0, NULL, 0);
-    WUP_DelayMS(140);
+    Thread_Sleep(140);
+    SPI_Unlock();
 }
 
 int UIC_ReadEEPROM(u32 offset, u8* data, int length)
@@ -374,7 +376,7 @@ void UIC_WaitWifiReady()
     {
         u8 ready = 0;
         UIC_SendCommand(0x13, NULL, 0, &ready, 1);
-        WUP_DelayMS(1);
+        Thread_Sleep(1);
 
         if (ready == 1) return;
     }

@@ -3,14 +3,12 @@
 
 static void* Mutex;
 
-volatile u8 SPI_IRQStatus;
-void SPI_IRQHandler(int irq, void* userdata);
+static void* IRQEvent;
+static void SPI_IRQHandler(int irq, void* userdata);
 
 
 void SPI_Init()
 {
-    Mutex = Mutex_Create();
-
     // setup GPIO
     /**(vu32*)0xF00050EC = 0x8001;    // clock
     *(vu32*)0xF00050F0 = 0x0001;    // MISO
@@ -22,26 +20,29 @@ void SPI_Init()
     REG_SPI_CNT = 0x307;
     REG_SPI_UNK14 = (REG_SPI_UNK14 & ~0x8013) | 0x8010;
 
-    SPI_IRQStatus = 0;
+    Mutex = Mutex_Create();
+    IRQEvent = EventMask_Create();
     WUP_SetIRQHandler(IRQ_SPI, SPI_IRQHandler, NULL, 0);
 }
 
 
-void SPI_IRQHandler(int irq, void* userdata)
+void SPI_Lock()
+{
+    Mutex_Acquire(Mutex, NoTimeout);
+}
+
+void SPI_Unlock()
+{
+    Mutex_Release(Mutex);
+}
+
+
+static void SPI_IRQHandler(int irq, void* userdata)
 {
     u32 flags = REG_SPI_IRQ_STATUS;
 
-    if (flags & SPI_IRQ_READ)
-    {
-        SPI_IRQStatus |= SPI_IRQ_READ;
-        REG_SPI_IRQ_STATUS |= SPI_IRQ_READ;
-    }
-
-    if (flags & SPI_IRQ_WRITE)
-    {
-        SPI_IRQStatus |= SPI_IRQ_WRITE;
-        REG_SPI_IRQ_STATUS |= SPI_IRQ_WRITE;
-    }
+    REG_SPI_IRQ_STATUS = flags;
+    EventMask_Signal(IRQEvent, flags);
 }
 
 
@@ -80,14 +81,13 @@ void SPI_Write(u8* buf, int len)
     DC_FlushRange(buf, len);
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
 
-    SPI_IRQStatus &= ~SPI_IRQ_WRITE;
+    EventMask_Clear(IRQEvent, SPI_IRQ_WRITE);
     REG_SPI_IRQ_ENABLE |= SPI_IRQ_WRITE;
 
     SPDMA_Transfer(0, buf, SPDMA_PERI_SPI, SPDMA_DIR_WRITE, len);
     SPDMA_Wait(0);
 
-    while (!(SPI_IRQStatus & SPI_IRQ_WRITE))
-        WaitForIRQ();
+    EventMask_Wait(IRQEvent, SPI_IRQ_WRITE, NoTimeout, NULL);
 
     REG_SPI_IRQ_ENABLE &= ~SPI_IRQ_WRITE;
 }

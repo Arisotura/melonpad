@@ -419,7 +419,8 @@ static void NwUpdateIcon()
 {
     if (!scCurrent->HasTopBar)
         return;
-return;
+
+    lv_lock();
     switch (nwState)
     {
     case 0:
@@ -437,6 +438,7 @@ return;
         lv_image_set_offset_y(scCurrent->TopBar[0], -16);
         break;
     }
+    lv_unlock();
 }
 
 static void NwUpdateQuality()
@@ -497,10 +499,10 @@ void NwConnect()
         Wifi_SetDHCPEnable(0);
         Wifi_SetIPAddr(nwIPAddr, nwSubnetwork, nwGateway);
     }
-printf("gonna join\n");
+
     if (!Wifi_JoinNetwork(nwSSID, nwAuthType, nwSecurity, nwPassphrase, NwJoinCallback))
         return;
-printf("joinig\n");
+
     NwSetState(1);
 }
 
@@ -555,6 +557,7 @@ void NwUpdate()
 static void PwUpdateIcon()
 {
     sInputData* input = Input_GetData();
+    lv_lock();
     if (input->PowerStatus & 0xC1)
     {
         // connected to external power
@@ -574,6 +577,7 @@ static void PwUpdateIcon()
         case 0: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_EMPTY); break;
         }
     }
+    lv_unlock();
 
     pwLastUpdate = WUP_GetTicks();
 }
@@ -606,6 +610,7 @@ void main()
     NwLoadSettings();
 
     lv_init();
+    lv_lock();
     lv_tick_set_cb((lv_tick_get_cb_t)WUP_GetTicks);
 
     lv_display_t* disp = lv_display_create(854, 480);
@@ -645,6 +650,8 @@ void main()
     lv_style_set_margin_bottom(&scBodyStyle, 0);
     lv_style_set_radius(&scBodyStyle, 0);
     lv_style_set_pad_all(&scBodyStyle, 10);
+
+    lv_unlock();
 
     scCurrent = NULL;
     memset(scStack, 0, sizeof(scStack));
