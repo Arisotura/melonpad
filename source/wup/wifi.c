@@ -4,7 +4,7 @@
 
 #include "lwip/opt.h"
 
-#include "lwip/netif.h"
+#include "lwip/netifapi.h"
 #include "lwip/dhcp.h"
 #include "lwip/api.h"
 #include "lwip/tcpip.h"
@@ -29,13 +29,14 @@
 #define State_GettingIP 3
 #define State_Joined    4
 
-static void* IRQThread;
-static void* IRQEventMask;
+static void* RxThread;
+static void* RxEventMask;
 
-static void* SDIOMutex;
+static void* WifiThread;
 
 static u8 ClkEnable;
 static u8 State;
+static u32 LastActiveTime;
 
 static u8 MACAddr[6];
 
@@ -52,12 +53,14 @@ static u8 TxMax;
 static void* TxSemaphore;
 static u16 TxCtlId;
 //static u8 TxBuffer[4096];
-static u8 TxBuffer[2048];
+static u8 TxCtlBuffer[2048] __attribute__((aligned(32)));
+static u8 TxDataBuffer[2048] __attribute__((aligned(32)));
 
 //static void* RxMailEvent;
 static u32 RxMail;
 static void* RxCtlMailbox;
 static void* RxEventMailbox;
+static void* RxDataMailbox;
 
 //static volatile u8 RxFlags;
 /*static void* RxEventMask;
@@ -103,19 +106,24 @@ void Wifi_ResetRxFlags(u8 flags);
 void Wifi_WaitForRx(u8 flags);
 void Wifi_CheckRx();
 
-int Wifi_SendIoctl(u32 opc, u16 flags, void* data, u32 len);
-int Wifi_GetVar(char* var, u8* data, u32 len);
-int Wifi_SetVar(char* var, u8* data, u32 len);
+int Wifi_SendIoctl(u32 opc, u16 flags, void* data, int len);
+int Wifi_GetVar(char* var, void* data, int len);
+int Wifi_SetVar(char* var, void* data, int len);
 
 void send_binary(u8* data, int len);
 void dump_data(u8* data, int len);
 
-static void IRQThreadFunc(void* userdata);
+static void RxThreadFunc(void* userdata);
+static void WifiThreadFunc(void* userdata);
 
 static void Wifi_HandleEvent(const u8* data);
-static void Wifi_HandleDataFrame(const u8* data);
+static void Wifi_HandleDataFrame(u8* data);
+
+static void ParseWPAInfo(int type, u8* info, u32 len, u8* auth, u8* sec);
+void Wifi_AddScanResult(const u8* apdata, u32 len);
 
 err_t NetIfInit(struct netif* netif);
+void NetIfStatusCb(struct netif* netif);
 err_t NetIfOutput(struct netif* netif, struct pbuf* p);
 
 
@@ -123,6 +131,7 @@ int Wifi_Init()
 {
     CardIRQFlag = 0;
     State = State_Idle;
+    LastActiveTime = WUP_GetTicks();
 
     memset(MACAddr, 0, sizeof(MACAddr));
 
@@ -146,6 +155,8 @@ int Wifi_Init()
     if (!RxCtlMailbox) return 0;
     RxEventMailbox = Mailbox_Create(32);
     if (!RxEventMailbox) return 0;
+    //RxDataMailbox = Mailbox_Create(32);
+    //if (!RxDataMailbox) return 0;
 
     /*RxEventMask = EventMask_Create();
     if (!RxEventMask) return 0;
@@ -160,11 +171,14 @@ int Wifi_Init()
     RxMailbox = Mailbox_Create(32);
     if (!RxMailbox) return 0;*/
 
-    IRQEventMask = EventMask_Create();
-    if (!IRQEventMask) return 0;
+    RxEventMask = EventMask_Create();
+    if (!RxEventMask) return 0;
 
-    IRQThread = Thread_Create(IRQThreadFunc, NULL, 0x1000, 0, "wifi");
-    if (!IRQThread) return 0;
+    RxThread = Thread_Create(RxThreadFunc, NULL, 0x1000, 0, "wifi_rx");
+    if (!RxThread) return 0;
+
+    WifiThread = Thread_Create(WifiThreadFunc, NULL, 0x1000, 4, "wifi");
+    if (!WifiThread) return 0;
 
     u32 regval;
 
@@ -267,8 +281,12 @@ int Wifi_Init()
     if (!Wifi_InitIoctls())
         return 0;
 
-    tcpip_init(OnTcpipInited, NULL);
     EnableDHCP = 0;
+
+    void* init_sema = Semaphore_Create(0);
+    tcpip_init(OnTcpipInited, init_sema);
+    Semaphore_Wait(init_sema, NoTimeout);
+    Semaphore_Delete(init_sema);
 
     Wifi_SetClkEnable(0);
     printf("Wifi: ready to go\n");
@@ -277,12 +295,15 @@ int Wifi_Init()
 
 void OnTcpipInited(void* arg)
 {
-    if (netif_add_noaddr(&NetIf, NULL, NetIfInit, netif_input) == NULL)
+    if (netif_add_noaddr(&NetIf, NULL, NetIfInit, tcpip_input) == NULL)
         return;
 
     dhcp_set_struct(&NetIf, &NetIfDhcp);
+    netif_set_status_callback(&NetIf, NetIfStatusCb);
     netif_set_default(&NetIf);
     netif_set_up(&NetIf);
+
+    Semaphore_Post(arg, 1);
 }
 
 void Wifi_DeInit()
@@ -342,7 +363,7 @@ void Wifi_SetClkEnable(int enable)
 
 int Wifi_InitIoctls()
 {
-    u32 var, resp;
+    u32 var;
     int res;
 
     // get MAC address
@@ -351,7 +372,7 @@ int Wifi_InitIoctls()
 
     // disable roaming
     var = 1;
-    res = Wifi_SetVar("roam_off", (u8*)&var, 4);
+    res = Wifi_SetVar("roam_off", &var, 4);
     if (!res) return 0;
 
     // set band
@@ -361,19 +382,19 @@ int Wifi_InitIoctls()
 
     // sgi_tx & sgi_rx
     var = 0;
-    res = Wifi_SetVar("sgi_tx", (u8*)&var, 4);
+    res = Wifi_SetVar("sgi_tx", &var, 4);
     if (!res) return 0;
 
     var = 0;
-    res = Wifi_SetVar("sgi_rx", (u8*)&var, 4);
+    res = Wifi_SetVar("sgi_rx", &var, 4);
     if (!res) return 0;
 
     var = 4;
-    res = Wifi_SetVar("ampdu_txfail_event", (u8*)&var, 4);
+    res = Wifi_SetVar("ampdu_txfail_event", &var, 4);
     if (!res) return 0;
 
     var = 1;
-    res = Wifi_SetVar("ac_remap_mode", (u8*)&var, 4);
+    res = Wifi_SetVar("ac_remap_mode", &var, 4);
     if (!res) return 0;
 
     u8 event_msgs[16] = {0};
@@ -398,11 +419,12 @@ int Wifi_InitIoctls()
     // set country
     u16 countrycode;
     UIC_ReadEEPROM(0x66, (u8*)&countrycode, 2);
+    // TODO set generic country code if this isn't correct
 
     u8 country_data[12] = {0};
     *(u16*)&country_data[0] = countrycode;
     *(u16*)&country_data[8] = countrycode;
-    res = Wifi_SetVar("country", (u8*)country_data, sizeof(country_data));
+    res = Wifi_SetVar("country", country_data, sizeof(country_data));
     if (!res) return 0;
 
     var = 1;
@@ -419,47 +441,464 @@ int Wifi_InitIoctls()
     for (int i = 0; lifetimes[i]; i++)
     {
         u32 data[2] = {i, lifetimes[i]};
-        res = Wifi_SetVar("lifetime", (u8*)data, 8);
+        res = Wifi_SetVar("lifetime", data, 8);
         if (!res) return 0;
     }
 
     var = 0xC8;
-    res = Wifi_GetVar("pm2_sleep_ret", (u8*)&var, 4);
+    res = Wifi_GetVar("pm2_sleep_ret", &var, 4);
     if (!res) return 0;
 
     var = 1;
-    res = Wifi_GetVar("bcn_li_bcn", (u8*)&var, 4);
+    res = Wifi_GetVar("bcn_li_bcn", &var, 4);
     if (!res) return 0;
 
     var = 1;
-    res = Wifi_GetVar("bcn_li_dtim", (u8*)&var, 4);
+    res = Wifi_GetVar("bcn_li_dtim", &var, 4);
     if (!res) return 0;
 
     var = 10;
-    res = Wifi_GetVar("assoc_listen", (u8*)&var, 4);
+    res = Wifi_GetVar("assoc_listen", &var, 4);
     if (!res) return 0;
 
     return 1;
 }
 
 
-/*static void Wifi_WaitTXReady()
+void Wifi_RxHostMail()
 {
-    // wait until we got enough credits to send stuff
+    RxMail = Wifi_AI_ReadCoreMem(0x04C);
+    Wifi_AI_WriteCoreMem(0x040, (1<<1));
+
+    //RxFlags |= Flag_RxMail;
+    //EventMask_Signal(RxEventMask, Flag_RxMail);
+    printf("RX MAIL: %08X\n", RxMail);
+}
+
+int Wifi_RxData()
+{
+    LastActiveTime = WUP_GetTicks();
+
+    // read header
+    u8 header[64];
+    if (!SDIO_ReadCardData(2, 0x8000, header, 64, 0))
+        return 0;
+
+    u16 len = READ16LE(header, 0);
+    u16 not_len = READ16LE(header, 2);
+    if (!(len | not_len)) return 0;
+    if (len < 12) return 0;
+    if (len != (u16)(~not_len)) return 0;
+
+    //u8 seqno = header[4];
+    u8 chan = header[5];
+    u8 dataoffset = header[7];
+    if (dataoffset < 12) return 0;
+
+    u8 txmax = header[9];
+    if ((u8)(txmax - TxSeqno) > 0x40)
+    {
+        printf("wifi: weird txmax %02X (seqno %02X)\n", txmax, TxSeqno);
+        txmax = TxSeqno + 2;
+    }
+    u8 credits = (u8)(txmax - TxMax);
+    if (credits)
+    {
+        //printf("txmax: old=%d, new=%d, giving %d credits\n", TxMax, txmax, credits);
+        Semaphore_Post(TxSemaphore, credits);
+        TxMax = txmax;
+    }
+
+    if (len <= dataoffset)
+    {
+        // dummy message, serves to give TX credits
+        return 1;
+    }
+
+    u16 len_rounded = (len + 0x3F) & ~0x3F;
+    u8* buf = (u8*)memalign(32, len_rounded);
+    if (!buf)
+    {
+        printf("wifi: out of memory! cannot receive frame\n");
+        return 0;
+    }
+
+    memcpy(buf, header, 64);
+    if (len_rounded > 64)
+    {
+        if (!SDIO_ReadCardData(2, 0x8000, &buf[64], len_rounded - 64, 0))
+        {
+            printf("wifi: failed to read rest of frame\n");
+            free(buf);
+            return 0;
+        }
+    }
+
+    if (chan == 0)
+    {
+        // control channel
+
+        if (!Mailbox_Send(RxCtlMailbox, buf))
+        {
+            printf("wifi: RX ctl mailbox full!\n");
+            free(buf);
+            return 0;
+        }
+    }
+    else if (chan == 1)
+    {
+        // event channel
+
+        if (!Mailbox_Send(RxEventMailbox, buf))
+        {
+            printf("wifi: RX event mailbox full!\n");
+            free(buf);
+            return 0;
+        }
+    }
+    else if (chan == 2)
+    {
+        // data channel
+
+        //if (!Mailbox_Send(RxDataMailbox, buf))
+        /*if (!Mailbox_Send(RxEventMailbox, buf))
+        {
+            printf("wifi: RX data mailbox full!\n");
+            free(buf);
+            return 0;
+        }*/
+        struct pbuf* lwbuf = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
+        if (!lwbuf)
+        {
+            printf("wifi: out of memory!\n");
+            free(buf);
+            return 0;
+        }
+
+        u8* src = &buf[dataoffset + 4];
+        struct pbuf* dst = lwbuf;
+        while (dst)
+        {
+            int curlen = dst->len;
+            if (curlen > len) curlen = len;
+
+            memcpy(dst->payload, src, curlen);
+            src += curlen;
+            len -= curlen;
+            if (len < 1) break;
+
+            dst = dst->next;
+        }
+
+        free(buf);
+
+        int res = NetIf.input(lwbuf, &NetIf);
+        if (res != ERR_OK)
+        {
+            printf("wifi: could not send frame (error %d)\n", res);
+            pbuf_free(lwbuf);
+            return 1;
+        }
+    }
+    else
+    {
+        printf("wifi: received data on channel %d\n", chan);
+        free(buf);
+        return 1;
+    }
+
+    return 1;
+}
+
+void Wifi_CardIRQ()
+{
+    SDIO_DisableCardIRQ();
+    EventMask_Signal(RxEventMask, 1);
+}
+
+static void RxThreadFunc(void* userdata)
+{
     for (;;)
     {
-        u8 credit = TxMax - TxSeqno;
-        if ((credit != 0) && (!(credit & 0x80)))
-            break;
+        EventMask_Wait(RxEventMask, 1, NoTimeout, NULL);
+        EventMask_Clear(RxEventMask, 1);
 
-        Wifi_WaitForRx(Flag_RxCredit);
-        Wifi_ResetRxFlags(Flag_RxCredit);
+        SDIO_Lock();
+        if (!ClkEnable)
+            Wifi_SetClkEnable(1);
+
+        u32 irqstatus = Wifi_AI_ReadCoreMem(0x020);
+        Wifi_AI_WriteCoreMem(0x020, irqstatus); // ack
+
+        if (irqstatus & (1<<7))
+        {
+            Wifi_RxHostMail();
+        }
+        if (irqstatus & (1<<6))
+        {
+            int res;
+            do res = Wifi_RxData();
+            while (res);
+        }
+
+        SDIO_EnableCardIRQ();
+        SDIO_Unlock();
     }
-}*/
+}
 
-int Wifi_SendIoctl(u32 opc, u16 flags, void* data, u32 len)
+
+static void Wifi_HandleEvent(const u8* data)
+{
+    u16 totallen = READ16LE(data, 0);
+    totallen = (totallen + 0x3F) & ~0x3F;
+
+    u8 dataoffset = data[7];
+    const u8* pktdata = &data[dataoffset];
+    const u8* pktend = &data[totallen];
+
+    u16 flags = READ16BE(pktdata, 0x1E);
+    u32 type = READ32BE(pktdata, 0x20);
+    u32 status = READ32BE(pktdata, 0x24);
+    u32 reason = READ32BE(pktdata, 0x28);
+
+    switch (type)
+    {
+    case WLC_E_SET_SSID:
+        if (State == State_Joining)
+        {
+            // for an open network, this event with status=0 would indicate a successful connection
+            // however, for a secure network, it may be followed by a disconnect
+            // so in that case we will rely on WLC_E_PSK_SUP instead
+            if (status == 0)
+            {
+                if (JoinOpen)
+                {
+                    if (EnableDHCP)
+                    {
+                        State = State_GettingIP;
+                        JoinStartTimestamp = WUP_GetTicks();
+                    }
+                    else
+                    {
+                        if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
+                        JoinCB = NULL;
+                        State = State_Joined;
+                    }
+                }
+                break;
+            }
+
+            int stat;
+            if (status == 3) // no networks
+                stat = WIFI_JOIN_NOTFOUND;
+            else
+                stat = WIFI_JOIN_FAIL;
+
+            if (JoinCB) JoinCB(stat);
+            JoinCB = NULL;
+            State = State_Idle;
+        }
+        break;
+
+    case WLC_E_LINK:
+        LinkStatus = flags;
+        if (LinkStatus)
+        {
+            netifapi_netif_set_link_up(&NetIf);
+            if (EnableDHCP)
+                netifapi_dhcp_start(&NetIf);
+        }
+        else
+        {
+            if (EnableDHCP)
+                netifapi_dhcp_stop(&NetIf);
+            netifapi_netif_set_link_down(&NetIf);
+        }
+        break;
+
+    case WLC_E_PRUNE:
+        if (State == State_Joining)
+        {
+            if (JoinCB) JoinCB(WIFI_JOIN_BADSEC);
+            JoinCB = NULL;
+            State = State_Idle;
+        }
+        break;
+
+    case WLC_E_PSK_SUP:
+        if ((State == State_Joining) && (!JoinOpen))
+        {
+            int stat;
+            if (status == 6) // unsolicited
+                stat = WIFI_JOIN_SUCCESS;
+            else if (status == 8) // partial
+                stat = WIFI_JOIN_BADPASS;
+            else
+                stat = WIFI_JOIN_FAIL;
+
+            if (EnableDHCP && (stat == WIFI_JOIN_SUCCESS))
+            {
+                State = State_GettingIP;
+                JoinStartTimestamp = WUP_GetTicks();
+            }
+            else
+            {
+                if (JoinCB) JoinCB(stat);
+                JoinCB = NULL;
+                State = (stat == WIFI_JOIN_SUCCESS) ? State_Joined : State_Idle;
+            }
+
+            if (stat != WIFI_JOIN_SUCCESS)
+                netifapi_dhcp_stop(&NetIf);
+        }
+        break;
+
+    case WLC_E_ESCAN_RESULT:
+        if (State == State_Scanning)
+        {
+            if (totallen < 0x58) break;
+
+            u32 aplen = READ32LE(pktdata, 0x4C);
+            u16 numap = READ16LE(pktdata, 0x56);
+            if ((aplen > 0xC) && (numap > 0))
+            {
+                // we got AP data
+                const u8* apdata = &pktdata[0x58];
+                const u8* apend = &apdata[aplen];
+                for (u32 j = 0; j < numap && apdata < apend; j++)
+                {
+                    if ((apdata + aplen) > pktend) break;
+
+                    u32 aplen = READ32LE(apdata, 0x04);
+                    Wifi_AddScanResult(apdata, aplen);
+                    apdata += aplen;
+                }
+            }
+            else
+            {
+                // empty frame: scan end
+
+                State = State_Idle;
+                if (ScanCB) ScanCB(ScanList, ScanNum);
+                ScanCB = NULL;
+            }
+        }
+        break;
+    }
+
+    if (type != 0x2C)
+        printf("* type=%d flags=%04X status=%08X reason=%08X\n", type, flags, status, reason);
+    //send_binary(data, totallen);
+}
+
+static void Wifi_HandleDataFrame(u8* data)
+{
+    u16 len = READ16LE(data, 0);
+    u8 dataoffset = data[7];
+    len -= (dataoffset + 4);
+
+    struct pbuf* lwbuf = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
+    if (!lwbuf)
+    {
+        printf("wifi: out of memory!\n");
+        free(data);
+        return;//return 0;
+    }
+
+    const u8* src = &data[dataoffset + 4];
+    struct pbuf* dst = lwbuf;
+    while (dst)
+    {
+        int curlen = dst->len;
+        if (curlen > len) curlen = len;
+
+        memcpy(dst->payload, src, curlen);
+        src += curlen;
+        len -= curlen;
+        if (len < 1) break;
+
+        dst = dst->next;
+    }
+
+    free(data);
+
+    int res = NetIf.input(lwbuf, &NetIf);
+    if (res != ERR_OK)
+    {
+        printf("wifi: could not send frame (error %d)\n", res);
+        pbuf_free(lwbuf);
+        return;//return 1;
+    }
+}
+
+static void WifiThreadFunc(void* userdata)
+{
+    for (;;)
+    {
+        void* dataptr;
+        if (Mailbox_Recv(RxEventMailbox, 500, &dataptr) == 1)
+        {
+            // handle event frame
+
+            //u8 chan = ((u8*)dataptr)[5];
+            //if (chan == 1)
+            {
+                Wifi_HandleEvent((u8*)dataptr);
+                free(dataptr);
+            }
+            /*else
+            {
+                Wifi_HandleDataFrame((u8*)dataptr);
+            }*/
+        }
+        /*if (Mailbox_Recv(RxDataMailbox, 500, &dataptr) == 1)
+        {
+            // handle data frame
+
+            Wifi_HandleDataFrame((u8*)dataptr);
+        }*/
+
+        // check for timeouts
+
+        u32 now = WUP_GetTicks();
+
+        if (State == State_Joining)
+        {
+            u32 time = now - JoinStartTimestamp;
+            if (time >= 10000)
+            {
+                if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
+                JoinCB = NULL;
+                State = State_Idle;
+            }
+        }
+        else if (State == State_GettingIP)
+        {
+            u32 time = now - JoinStartTimestamp;
+            if (time >= 10000)
+            {
+                if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
+                JoinCB = NULL;
+                Wifi_Disconnect();
+            }
+        }
+
+        if (ClkEnable && (State == State_Idle))
+        {
+            u32 time = now - LastActiveTime;
+            if (time >= 1000)
+                Wifi_SetClkEnable(0);
+        }
+    }
+}
+
+
+int Wifi_SendIoctl(u32 opc, u16 flags, void* data, int len)
 {
     int ret = 1;
+
+    Wifi_SetClkEnable(1);
+    LastActiveTime = WUP_GetTicks();
 
     if (Semaphore_Wait(TxSemaphore, 1000) < 1)
     {
@@ -467,7 +906,7 @@ int Wifi_SendIoctl(u32 opc, u16 flags, void* data, u32 len)
         return 0;
     }
 
-    u8* buf = &TxBuffer[0];
+    u8* buf = &TxCtlBuffer[0];
     u16 wanted_id = TxCtlId;
 
     // actual frame length can be smaller than requested data length
@@ -495,7 +934,12 @@ int Wifi_SendIoctl(u32 opc, u16 flags, void* data, u32 len)
     u16 len_rounded = (totallen + 0x3F) & ~0x3F;
     if (len_rounded > totallen)
         memset(&buf[totallen], 0, len_rounded - totallen);
-    SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0);
+
+    if (!SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0))
+    {
+        printf("Wifi_SendIoctl: failed to send ioctl frame\n");
+        return 0;
+    }
 
     // wait for response
     void* respframe;
@@ -554,7 +998,7 @@ int Wifi_SendIoctl(u32 opc, u16 flags, void* data, u32 len)
     return ret;
 }
 
-int Wifi_GetVar(char* var, u8* data, u32 len)
+int Wifi_GetVar(char* var, void* data, int len)
 {
     u8 buf[128];
 
@@ -562,14 +1006,14 @@ int Wifi_GetVar(char* var, u8* data, u32 len)
     memcpy(buf, var, varlen);
     buf[varlen] = 0;
 
-    if (!Wifi_SendIoctl(262, 0, buf, 128))
+    if (!Wifi_SendIoctl(WLC_GET_VAR, 0, buf, 128))
         return 0;
 
     memcpy(data, buf, len);
     return 1;
 }
 
-int Wifi_SetVar(char* var, u8* data, u32 len)
+int Wifi_SetVar(char* var, void* data, int len)
 {
     u8 buf[128];
 
@@ -578,211 +1022,11 @@ int Wifi_SetVar(char* var, u8* data, u32 len)
     buf[varlen] = 0;
     memcpy(&buf[varlen+1], data, len);
 
-    if (!Wifi_SendIoctl(263, 2, buf, 128))
+    if (!Wifi_SendIoctl(WLC_SET_VAR, 2, buf, 128))
         return 0;
 
     return 1;
 }
-
-
-void Wifi_ResetRxFlags(u8 flags)
-{
-    //RxFlags &= ~flags;
-    //EventMask_Clear(RxEventMask, flags);
-}
-
-void Wifi_WaitForRx(u8 flags)
-{
-    /*while (!(RxFlags & flags))
-    {
-        while (!CardIRQFlag) WaitForIRQ();
-        Wifi_CheckRx();
-    }*/
-    //u32 timeout = NoTimeout;
-    //EventMask_Wait(RxEventMask, flags, timeout, NULL);
-}
-
-void Wifi_RxHostMail()
-{
-    RxMail = Wifi_AI_ReadCoreMem(0x04C);
-    Wifi_AI_WriteCoreMem(0x040, (1<<1));
-
-    //RxFlags |= Flag_RxMail;
-    //EventMask_Signal(RxEventMask, Flag_RxMail);
-}
-
-int Wifi_RxData()
-{
-    // read header
-    u8 header[64];
-    SDIO_ReadCardData(2, 0x8000, header, 64, 0);
-
-    u16 len = *(u16*)&header[0];
-    u16 not_len = *(u16*)&header[2];
-    if (!(len | not_len)) return 0;
-    if (len < 12) return 0;
-    if (len != (u16)(~not_len)) return 0;
-
-    //u8 seqno = header[4];
-    u8 chan = header[5];
-    u8 dataoffset = header[7];
-    if (dataoffset < 12) return 0;
-
-    u8 txmax = header[9];
-    if ((u8)(txmax - TxSeqno) > 0x40)
-    {
-        printf("wifi: weird txmax %02X (seqno %02X)\n", txmax, TxSeqno);
-        txmax = TxSeqno + 2;
-    }
-    u8 credits = (u8)(txmax - TxMax);
-    if (credits)
-    {
-        printf("txmax: old=%d, new=%d, giving %d credits\n", TxMax, txmax, credits);
-        Semaphore_Post(TxSemaphore, credits);
-        TxMax = txmax;
-    }
-
-    if (len <= dataoffset)
-    {
-        // dummy message, serves to give TX credits
-        return 1;
-    }
-
-    u16 len_rounded = (len + 0x3F) & ~0x3F;
-    u8* buf = (u8*)memalign(16, len_rounded);
-    if (!buf)
-    {
-        printf("wifi: out of memory! cannot receive frame\n");
-        return 0;
-    }
-
-    memcpy(buf, header, 64);
-    if (len_rounded > 64)
-        SDIO_ReadCardData(2, 0x8000, &buf[64], len_rounded-64, 0);
-
-    if (chan == 0)
-    {
-        // control channel
-
-        if (!Mailbox_Send(RxCtlMailbox, buf))
-        {
-            printf("wifi: RX ctl mailbox full!\n");
-            free(buf);
-            return 0;
-        }
-    }
-    else if (chan == 1)
-    {
-        // event channel
-
-        if (!Mailbox_Send(RxEventMailbox, buf))
-        {
-            printf("wifi: RX event mailbox full!\n");
-            free(buf);
-            return 0;
-        }
-    }
-    else if (chan == 2)
-    {
-        // data channel
-        // TODO send to lwIP
-    }
-    else
-    {
-        printf("wifi: received data on channel %d\n", chan);
-        free(buf);
-        return 1;
-    }
-
-    return 1;
-}
-
-void Wifi_CardIRQ()
-{
-    SDIO_DisableCardIRQ();
-    EventMask_Signal(IRQEventMask, 1);
-}
-
-static void IRQThreadFunc(void* userdata)
-{
-    for (;;)
-    {
-        EventMask_Wait(IRQEventMask, 1, NoTimeout, NULL);
-        EventMask_Clear(IRQEventMask, 1);
-
-        SDIO_Lock();
-        if (!ClkEnable)
-            Wifi_SetClkEnable(1);
-
-        u32 irqstatus = Wifi_AI_ReadCoreMem(0x020);
-        Wifi_AI_WriteCoreMem(0x020, irqstatus); // ack
-
-        //u32 signalflags = 0;
-        if (irqstatus & (1<<7))
-        {
-            Wifi_RxHostMail();
-            //signalflags |= Flag_RxMail;
-        }
-        if (irqstatus & (1<<6))
-        {
-            int res;
-            do res = Wifi_RxData();
-            while (res);
-        }
-
-        SDIO_EnableCardIRQ();
-        SDIO_Unlock();
-
-        //if (signalflags)
-        //    EventMask_Signal(RxEventMask, signalflags);
-    }
-}
-
-/*void Wifi_CheckRx()
-{
-    if (!ClkEnable)
-        Wifi_SetClkEnable(1);
-
-    CardIRQFlag = 0;
-
-    u32 irqstatus = Wifi_AI_ReadCoreMem(0x020);
-    Wifi_AI_WriteCoreMem(0x020, irqstatus); // ack
-
-    if (irqstatus & (1<<7))
-    {
-        Wifi_RxHostMail();
-    }
-    if (irqstatus & (1<<6))
-    {
-        int res;
-        do res = Wifi_RxData();
-        while (res);
-    }
-
-    SDIO_EnableCardIRQ();
-}*/
-
-/*
-sPacket* Wifi_ReadRxPacket()
-{
-    //int irq = DisableIRQ();
-
-    sPacket* pkt = PktQueueHead;
-    if (!pkt)
-    {
-        //RestoreIRQ(irq);
-        return NULL;
-    }
-
-    PktQueueHead = pkt->Next;
-    if (!PktQueueHead)
-        PktQueueTail = NULL;
-
-    //RestoreIRQ(irq);
-    return pkt;
-}*/
-
-
 
 
 int Wifi_StartScan(fnScanCb callback)
@@ -798,7 +1042,7 @@ int Wifi_StartScan(fnScanCb callback)
     memset(scanparams, 0, sizeof(scanparams));
     *(u32*)&scanparams[0] = 1; // version
     *(u16*)&scanparams[4] = 1; // action: start
-    *(u16*)&scanparams[6] = 1; // duration
+    *(u16*)&scanparams[6] = 1; // sync ID
     memset(&scanparams[8+36], 0xFF, 6); // BSSID
     scanparams[8+42] = 2; // BSS type
     scanparams[8+43] = 1; // scan type (passive)
@@ -879,13 +1123,13 @@ static int CompareScanInfo(sScanInfo* a, sScanInfo* b)
         return strncmp(a->SSID, b->SSID, 32);
 }
 
-void Wifi_AddScanResult(u8* apdata, u32 len)
+void Wifi_AddScanResult(const u8* apdata, u32 len)
 {
     u8 bssid[6];
     memcpy(bssid, &apdata[0x08], 6);
 
     char ssid[33];
-    u8 ssidlen = apdata[0x12];printf("ssidlen=%d\n",ssidlen);
+    u8 ssidlen = apdata[0x12];
     if (ssidlen > 32) return;
 
     if (ssidlen == 0)
@@ -1158,7 +1402,7 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
     if (!res) return 0;
 
     var = (auth == WIFI_AUTH_OPEN) ? 0 : 1;
-    res = Wifi_SetVar("sup_wpa", (u8*)&var, 4);
+    res = Wifi_SetVar("sup_wpa", &var, 4);
     if (!res) return 0;
 
     WUP_DelayMS(2);
@@ -1176,8 +1420,6 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
         res = Wifi_SendIoctl(WLC_SET_WSEC_PMK, 2, pmk, 68);
         if (!res) return 0;
     }
-
-    //Wifi_ResetRxFlags(Flag_RxEvent);
 
     // set SSID - this initiates the connection
     u8 ssiddata[42] = {0};
@@ -1199,6 +1441,16 @@ int Wifi_JoinNetwork(const char* ssid, u8 auth, u8 security, const char* pass, f
 
 int Wifi_Disconnect()
 {
+    if (State == State_Idle)
+        return 1;
+
+    if (LinkStatus)
+    {
+        if (EnableDHCP)
+            netifapi_dhcp_stop(&NetIf);
+        netifapi_netif_set_link_down(&NetIf);
+    }
+
     u32 crap = 0;
     int res = Wifi_SendIoctl(WLC_DISASSOC, 2, &crap, 4);
     if (!res) return 0;
@@ -1216,7 +1468,7 @@ int Wifi_GetRSSI(s16* p_rssi, u8* p_quality)
         return 0;
     if ((!p_rssi) && (!p_quality))
         return 0;
-
+return 0;
     s32 rssi = 0;
     int res = Wifi_SendIoctl(WLC_GET_RSSI, 2, &rssi, 4);
     if (!res) return 0;
@@ -1247,9 +1499,9 @@ void Wifi_SetDHCPEnable(int enable)
     if (LinkStatus)
     {
         if (enable)
-            dhcp_start(&NetIf);
+            netifapi_dhcp_start(&NetIf);
         else
-            dhcp_stop(&NetIf);
+            netifapi_dhcp_stop(&NetIf);
     }
 }
 
@@ -1281,258 +1533,6 @@ int Wifi_GetIPAddr(u8* ip)
     return 1;
 }
 
-
-//static void Wifi_HandleEvent(sPacket* pkt)
-static void Wifi_HandleEvent(const u8* data)
-{
-    u16 totallen = 4096;//*(u16*)&data[0];
-    u8 dataoffset = data[7];
-    const u8* pktdata = &data[dataoffset];
-    const u8* pktend = &data[totallen];
-
-    u16 flags = READ16BE(pktdata, 0x1E);
-    u32 type = READ32BE(pktdata, 0x20);
-    u32 status = READ32BE(pktdata, 0x24);
-    u32 reason = READ32BE(pktdata, 0x28);
-
-    switch (type)
-    {
-    case WLC_E_SET_SSID:
-        if (State == State_Joining)
-        {
-            // for an open network, this event with status=0 would indicate a successful connection
-            // however, for a secure network, it may be followed by a disconnect
-            // so in that case we will rely on WLC_E_PSK_SUP instead
-            if (status == 0)
-            {
-                if (JoinOpen)
-                {
-                    if (EnableDHCP)
-                    {
-                        State = State_GettingIP;
-                        JoinStartTimestamp = WUP_GetTicks();
-                    }
-                    else
-                    {
-                        if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
-                        JoinCB = NULL;
-                        State = State_Joined;
-                    }
-                }
-                break;
-            }
-
-            int stat;
-            if (status == 3) // no networks
-                stat = WIFI_JOIN_NOTFOUND;
-            else
-                stat = WIFI_JOIN_FAIL;
-
-            if (JoinCB) JoinCB(stat);
-            JoinCB = NULL;
-            State = State_Idle;
-        }
-        break;
-
-    case WLC_E_LINK:
-        LinkStatus = flags;
-        if (LinkStatus)
-        {
-            netif_set_link_up(&NetIf);
-            if (EnableDHCP)
-                dhcp_start(&NetIf);
-        }
-        else
-        {
-            if (EnableDHCP)
-                dhcp_stop(&NetIf);
-            netif_set_link_down(&NetIf);
-        }
-        break;
-
-    case WLC_E_PRUNE:
-        if (State == State_Joining)
-        {
-            if (JoinCB) JoinCB(WIFI_JOIN_BADSEC);
-            JoinCB = NULL;
-            State = State_Idle;
-        }
-        break;
-
-    case WLC_E_PSK_SUP:
-        if ((State == State_Joining) && (!JoinOpen))
-        {
-            int stat;
-            if (status == 6) // unsolicited
-                stat = WIFI_JOIN_SUCCESS;
-            else if (status == 8) // partial
-                stat = WIFI_JOIN_BADPASS;
-            else
-                stat = WIFI_JOIN_FAIL;
-
-            if (EnableDHCP && (stat == WIFI_JOIN_SUCCESS))
-            {
-                State = State_GettingIP;
-                JoinStartTimestamp = WUP_GetTicks();
-            }
-            else
-            {
-                if (JoinCB) JoinCB(stat);
-                JoinCB = NULL;
-                State = (stat == WIFI_JOIN_SUCCESS) ? State_Joined : State_Idle;
-            }
-
-            if (stat != WIFI_JOIN_SUCCESS)
-                dhcp_stop(&NetIf);
-        }
-        break;
-
-    case WLC_E_ESCAN_RESULT:
-        if (State == State_Scanning)
-        {
-            if (totallen < 0x58) break;
-
-            u32 aplen = READ32LE(pktdata, 0x4C);
-            u16 numap = READ16LE(pktdata, 0x56);
-            if ((aplen > 0xC) && (numap > 0))
-            {
-                // we got AP data
-                u8* apdata = &pktdata[0x58];
-                u8* apend = &apdata[aplen];
-                for (u32 j = 0; j < numap && apdata < apend; j++)
-                {
-                    if ((apdata + aplen) > pktend) break;
-
-                    u32 aplen = READ32LE(apdata, 0x04);
-                    Wifi_AddScanResult(apdata, aplen);
-                    apdata += aplen;
-                }
-            }
-            else
-            {
-                // empty frame: scan end
-
-                State = State_Idle;
-                if (ScanCB) ScanCB(ScanList, ScanNum);
-                ScanCB = NULL;
-            }
-        }
-        break;
-    }
-
-    if (type != 0x2C)
-        printf("* type=%d flags=%04X status=%08X reason=%08X\n", type, flags, status, reason);
-    //send_binary(data, totallen);
-}
-
-//static void Wifi_HandleDataFrame(sPacket* pkt)
-static void Wifi_HandleDataFrame(const u8* pktdata)
-{
-    u16 totallen = *(u16*)&pktdata[0];
-    u8 dataoffset = pktdata[7];
-
-    // skip headers
-    u8* data = &pktdata[dataoffset + 4];
-    //int len = pkt->Length - dataoffset - 4;
-    int len = totallen - dataoffset - 4;
-
-    // TODO use externally allocated pbuf to avoid copying shit around
-    // (pbuf_alloced_custom())
-    struct pbuf* buf = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
-    if (!buf)
-    {
-        // TODO signal this?
-        return;
-    }
-
-    struct pbuf* cur = buf;
-    while (cur)
-    {
-        int curlen = cur->len;
-        if (curlen > len) curlen = len;
-
-        memcpy(cur->payload, data, curlen);
-        data += curlen;
-        len -= curlen;
-        if (len < 1) break;
-
-        cur = cur->next;
-    }
-
-    if (NetIf.input(buf, &NetIf) != ERR_OK)
-    {
-        // TODO signal this?
-        pbuf_free(buf);
-        return;
-    }
-}
-
-void Wifi_Update()
-{
-#if 0
-    if (State == State_Joining)
-    {
-        u32 time = WUP_GetTicks() - JoinStartTimestamp;
-        if (time >= 10000)
-        {
-            if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
-            JoinCB = NULL;
-            State = State_Idle;
-        }
-    }
-
-    sys_check_timeouts();
-
-    if (State == State_GettingIP)
-    {
-        const ip4_addr_t* addr = netif_ip4_addr(&NetIf);
-        if (!ip4_addr_isany(addr))
-        {
-            // we got an IP address
-            if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
-            JoinCB = NULL;
-            State = State_Joined;
-        }
-        else
-        {
-            u32 time = WUP_GetTicks() - JoinStartTimestamp;
-            if (time >= 10000)
-            {
-                if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
-                JoinCB = NULL;
-                Wifi_Disconnect();
-            }
-        }
-    }
-
-    if (CardIRQFlag)
-        Wifi_CheckRx();
-
-    if (RxFlags & (Flag_RxEvent | Flag_RxData))
-    {
-        sPacket* pkt;
-        while ((pkt = Wifi_ReadRxPacket()))
-        {
-            u8 chan = pkt->Data[5];
-            if (chan == 1)
-            {
-                Wifi_HandleEvent(pkt);
-            }
-            else if (chan == 2)
-            {
-                Wifi_HandleDataFrame(pkt);
-            }
-
-            free(pkt);
-        }
-
-        Wifi_ResetRxFlags(Flag_RxEvent | Flag_RxData);
-    }
-
-    if (ClkEnable && (State == State_Idle))
-        Wifi_SetClkEnable(0);
-#endif
-}
 
 err_t NetIfInit(struct netif* netif)
 {
@@ -1566,14 +1566,32 @@ err_t NetIfInit(struct netif* netif)
     return ERR_OK;
 }
 
+void NetIfStatusCb(struct netif* netif)
+{
+    if (State == State_GettingIP)
+    {
+        const ip4_addr_t* addr = netif_ip4_addr(&NetIf);
+        if (!ip4_addr_isany(addr))
+        {
+            if (JoinCB) JoinCB(WIFI_JOIN_SUCCESS);
+            JoinCB = NULL;
+            State = State_Joined;
+        }
+    }
+}
+
 err_t NetIfOutput(struct netif* netif, struct pbuf* p)
 {
     if (!LinkStatus)
         return ERR_CONN;
-printf("we sending shit?\n");
-    /*Wifi_WaitTXReady();
 
-    u8* buf = &TxBuffer[0];
+    Wifi_SetClkEnable(1);
+    LastActiveTime = WUP_GetTicks();
+
+    if (Semaphore_Wait(TxSemaphore, 1000) < 1)
+        return ERR_TIMEOUT;
+
+    u8* buf = &TxDataBuffer[0];
 
     int len_in = 0;
     u8* pktdata = &buf[18];
@@ -1589,6 +1607,8 @@ printf("we sending shit?\n");
     }
 
     int totallen = len_in + 18;
+    if (totallen > sizeof(TxDataBuffer))
+        return ERR_BUF;
 
     *(u16*)&buf[0] = totallen;
     *(u16*)&buf[2] = ~totallen;
@@ -1604,7 +1624,7 @@ printf("we sending shit?\n");
     // send frame
     u16 len_rounded = (totallen + 0x3F) & ~0x3F;
     if (!SDIO_WriteCardData(2, 0x8000, buf, len_rounded, 0))
-        return ERR_IF;*/
+        return ERR_IF;
 
     return ERR_OK;
 }

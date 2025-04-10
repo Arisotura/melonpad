@@ -1,12 +1,16 @@
 #include <wup/wup.h>
 
 
+static void* Mutex;
+
 volatile u8 SPI_IRQStatus;
 void SPI_IRQHandler(int irq, void* userdata);
 
 
 void SPI_Init()
 {
+    Mutex = Mutex_Create();
+
     // setup GPIO
     /**(vu32*)0xF00050EC = 0x8001;    // clock
     *(vu32*)0xF00050F0 = 0x0001;    // MISO
@@ -43,6 +47,8 @@ void SPI_IRQHandler(int irq, void* userdata)
 
 void SPI_Start(u32 device, u32 clock)
 {
+    Mutex_Acquire(Mutex, NoTimeout);
+
     REG_SPI_DEVICE_SEL = device & 0x3;
     REG_SPI_CLOCK = clock & 0x87FF;
 
@@ -52,6 +58,7 @@ void SPI_Start(u32 device, u32 clock)
 void SPI_Finish()
 {
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_CS_MASK) | SPI_CSMODE_MANUAL | SPI_CS_RELEASE;
+    Mutex_Release(Mutex);
 }
 
 

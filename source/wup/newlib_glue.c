@@ -7,6 +7,9 @@
 #include <stdio.h>
 
 #include <wup/wup.h>
+#include <lwip/sockets.h>
+
+#define _is_socket(fd) (((fd) >= LWIP_SOCKET_OFFSET) && ((fd) < (LWIP_SOCKET_OFFSET + MEMP_NUM_NETCONN)))
 
 
 char *__env[1] = { 0 };
@@ -24,6 +27,9 @@ int _open(const char *name, int flags, ...)
 
 int _close(int file)
 {
+    if (_is_socket(file))
+        return lwip_close(file);
+
     return -1;
 }
 
@@ -34,6 +40,9 @@ int _lseek(int file, int ptr, int dir)
 
 int _read(int file, char *ptr, int len)
 {
+    if (_is_socket(file))
+        return lwip_read(file, ptr, len);
+
     return 0;
 }
 
@@ -56,6 +65,9 @@ void _SPI_Write(u8* buf, int len)
 
 int _write(int file, char *ptr, int len)
 {
+    if (_is_socket(file))
+        return lwip_write(file, ptr, len);
+
     if (file == 1)
     {
         int irqen = DisableIRQ();
@@ -78,9 +90,10 @@ int _write(int file, char *ptr, int len)
                 buf[1] = header >> 8;
                 buf[2] = header & 0xFF;
 
-                SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
+                SPI_Start(SPI_DEVICE_FLASH, SPI_CLK_ENABLE | SPI_CLK_SOURCE(CLKSRC_32MHZ) | SPI_CLK_DIVIDER(16));
+                //SPI_Start(SPI_DEVICE_FLASH, 0x8400);//SPI_SPEED_FLASH);
                 _SPI_Write(buf, 3);
-                _SPI_Write((u8 *) ptr, chunk);
+                _SPI_Write((u8 *) ptr + i, chunk);
                 SPI_Finish();
             }
         }
@@ -96,7 +109,10 @@ int _write(int file, char *ptr, int len)
 
 int _isatty(int file)
 {
-    return 1;
+    if (file == 1)
+        return 1;
+
+    return 0;
 }
 
 int _fstat(int file, struct stat *st)

@@ -1662,7 +1662,7 @@
  * small real-life targets. Some code like routing etc. can be left out.
  */
 #if !defined LWIP_SINGLE_NETIF || defined __DOXYGEN__
-#define LWIP_SINGLE_NETIF               0
+#define LWIP_SINGLE_NETIF               1
 #endif
 
 /**
@@ -1677,7 +1677,7 @@
  * LWIP_NETIF_API==1: Support netif api (in netifapi.c)
  */
 #if !defined LWIP_NETIF_API || defined __DOXYGEN__
-#define LWIP_NETIF_API                  0
+#define LWIP_NETIF_API                  1
 #endif
 
 /**
@@ -1685,7 +1685,7 @@
  * changes its up/down status (i.e., due to DHCP IP acquisition)
  */
 #if !defined LWIP_NETIF_STATUS_CALLBACK || defined __DOXYGEN__
-#define LWIP_NETIF_STATUS_CALLBACK      0
+#define LWIP_NETIF_STATUS_CALLBACK      1
 #endif
 
 /**
@@ -1860,7 +1860,7 @@
  * sys_mbox_new() when tcpip_init is called.
  */
 #if !defined TCPIP_MBOX_SIZE || defined __DOXYGEN__
-#define TCPIP_MBOX_SIZE                 0
+#define TCPIP_MBOX_SIZE                 32
 #endif
 
 /**
@@ -1927,7 +1927,7 @@
  * to sys_mbox_new() when the recvmbox is created.
  */
 #if !defined DEFAULT_RAW_RECVMBOX_SIZE || defined __DOXYGEN__
-#define DEFAULT_RAW_RECVMBOX_SIZE       0
+#define DEFAULT_RAW_RECVMBOX_SIZE       16
 #endif
 
 /**
@@ -1936,7 +1936,7 @@
  * to sys_mbox_new() when the recvmbox is created.
  */
 #if !defined DEFAULT_UDP_RECVMBOX_SIZE || defined __DOXYGEN__
-#define DEFAULT_UDP_RECVMBOX_SIZE       0
+#define DEFAULT_UDP_RECVMBOX_SIZE       16
 #endif
 
 /**
@@ -1945,7 +1945,7 @@
  * to sys_mbox_new() when the recvmbox is created.
  */
 #if !defined DEFAULT_TCP_RECVMBOX_SIZE || defined __DOXYGEN__
-#define DEFAULT_TCP_RECVMBOX_SIZE       0
+#define DEFAULT_TCP_RECVMBOX_SIZE       16
 #endif
 
 /**
@@ -1954,7 +1954,7 @@
  * sys_mbox_new() when the acceptmbox is created.
  */
 #if !defined DEFAULT_ACCEPTMBOX_SIZE || defined __DOXYGEN__
-#define DEFAULT_ACCEPTMBOX_SIZE         0
+#define DEFAULT_ACCEPTMBOX_SIZE         16
 #endif
 /**
  * @}
@@ -2043,7 +2043,7 @@
  * names (read, write & close). (only used if you use sockets.c)
  */
 #if !defined LWIP_POSIX_SOCKETS_IO_NAMES || defined __DOXYGEN__
-#define LWIP_POSIX_SOCKETS_IO_NAMES     1
+#define LWIP_POSIX_SOCKETS_IO_NAMES     0
 #endif
 
 /**
@@ -2054,7 +2054,7 @@
  * library (sharing select will need more work though).
  */
 #if !defined LWIP_SOCKET_OFFSET || defined __DOXYGEN__
-#define LWIP_SOCKET_OFFSET              0
+#define LWIP_SOCKET_OFFSET              60
 #endif
 
 /**
@@ -2082,7 +2082,7 @@
  * SO_SNDTIMEO processing.
  */
 #if !defined LWIP_SO_SNDTIMEO || defined __DOXYGEN__
-#define LWIP_SO_SNDTIMEO                0
+#define LWIP_SO_SNDTIMEO                1
 #endif
 
 /**
@@ -2090,7 +2090,7 @@
  * SO_RCVTIMEO processing.
  */
 #if !defined LWIP_SO_RCVTIMEO || defined __DOXYGEN__
-#define LWIP_SO_RCVTIMEO                0
+#define LWIP_SO_RCVTIMEO                1
 #endif
 
 /**
@@ -2133,7 +2133,7 @@
  * SO_REUSE==1: Enable SO_REUSEADDR option.
  */
 #if !defined SO_REUSE || defined __DOXYGEN__
-#define SO_REUSE                        0
+#define SO_REUSE                        1
 #endif
 
 /**
@@ -2142,7 +2142,7 @@
  * WARNING: Adds a memcpy for every packet if passing to more than one pcb!
  */
 #if !defined SO_REUSE_RXTOALL || defined __DOXYGEN__
-#define SO_REUSE_RXTOALL                0
+#define SO_REUSE_RXTOALL                1
 #endif
 
 /**

@@ -419,7 +419,7 @@ static void NwUpdateIcon()
 {
     if (!scCurrent->HasTopBar)
         return;
-
+return;
     switch (nwState)
     {
     case 0:
@@ -497,15 +497,15 @@ void NwConnect()
         Wifi_SetDHCPEnable(0);
         Wifi_SetIPAddr(nwIPAddr, nwSubnetwork, nwGateway);
     }
-
+printf("gonna join\n");
     if (!Wifi_JoinNetwork(nwSSID, nwAuthType, nwSecurity, nwPassphrase, NwJoinCallback))
         return;
-
+printf("joinig\n");
     NwSetState(1);
 }
 
 void NwDisconnect()
-{return;
+{
     Wifi_Disconnect();
     NwSetState(0);
 }
@@ -654,9 +654,8 @@ void main()
     scCloseData = NULL;
 
     ScOpen(&scBootMenu, NULL);
-    //nwDoConnect = 1;
-    //NwConnect();
-    nwDoConnect = 0;
+    nwDoConnect = 1;
+    NwConnect();
 
 	for (;;)
 	{

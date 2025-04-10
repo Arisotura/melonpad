@@ -49,13 +49,6 @@ void Wifi_GetMACAddr(u8* addr);
 
 void Wifi_SetClkEnable(int enable);
 
-int Wifi_UploadFirmware();
-
-void Wifi_WaitForRx(u8 flags);
-void Wifi_CardIRQ();
-
-void Wifi_Update();
-
 int Wifi_StartScan(fnScanCb callback);
 void Wifi_CleanupScanList();
 

@@ -50,7 +50,7 @@ void WUP_Init()
     // IRQ trigger type?
     // for example for IRQ 15/16 it needs to be 1 for them to fire repeatedly
     const u8 irqtrig[40] = {
-        1, 1, 1,                // 00..02
+        1, 1, 5,                // 00..02
         5, 5, 5, 5, 5,          // 03..07
         1, 1, 1, 1, 1, 1, 1,    // 08..0E
         5, 5, 5, 5, 5, 5,       // 0F..14
@@ -253,7 +253,6 @@ void WUP_Update()
     // (whenever we get RTOS stuff going)
 
     Input_Scan();
-    Wifi_Update();
 }
 
 
@@ -322,6 +321,7 @@ u32 IRQHandler()
 
 void Timer0IRQ(int irq, void* userdata)
 {
+    REG_TIMER_CNT(0) = 0;
     Timer0Flag = 1;
 }
 
@@ -333,6 +333,7 @@ void Timer1IRQ(int irq, void* userdata)
 
 void WUP_DelayUS(int us)
 {
+    if (REG_TIMER_CNT(0)) printf("!! WUP TIMER ALREADY ENABLED 1\n");
     REG_TIMER_CNT(0) = 0;
     Timer0Flag = 0;
     REG_TIMER_VALUE(0) = 0;
@@ -347,6 +348,7 @@ void WUP_DelayUS(int us)
 
 void WUP_DelayMS(int ms)
 {
+    if (REG_TIMER_CNT(0)) printf("!! WUP TIMER ALREADY ENABLED 2\n");
     REG_TIMER_CNT(0) = 0;
     Timer0Flag = 0;
     REG_TIMER_VALUE(0) = 0;

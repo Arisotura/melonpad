@@ -55,8 +55,6 @@ IsInIRQ:
 .global DC_FlushRange
 .type DC_FlushRange, %function
 DC_FlushRange:
-    mov r2, #0
-    mcr p15, 0, r2, c7, c10, 4
     add r1, r0, r1
     bic r0, r0, #31
 _dcflushrange_loop:

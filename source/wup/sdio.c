@@ -5,6 +5,7 @@
 // * use proper defines for register names, bits, etc
 
 void SDIO_IRQHandler(int irq, void* userdata);
+void Wifi_CardIRQ();
 
 static u32 SD_Caps;
 static u32 SD_RCA;
@@ -14,7 +15,6 @@ static u32 SD_CISPtr[7];
 
 static u32 SD_F1Base;
 
-//static volatile u16 IRQFlags;
 static void* IRQEventMask;
 static volatile u16 ErrorFlags;
 
@@ -151,13 +151,11 @@ int SDIO_Init()
 
 void SDIO_EnableCardIRQ()
 {
-    //_write(1, "card on\n", 8);
     REG_SD_IRQSIGNALENABLE |= SD_IRQ_CARD_IRQ;
 }
 
 void SDIO_DisableCardIRQ()
 {
-    //_write(1, "card off\n", 9);
     REG_SD_IRQSIGNALENABLE &= ~SD_IRQ_CARD_IRQ;
 }
 
@@ -183,7 +181,6 @@ void SDIO_IRQHandler(int irq, void* userdata)
         u16 oldenable = REG_SD_IRQSTATUSENABLE;
         REG_SD_IRQSTATUSENABLE = oldenable & ~SD_IRQ_CARD_IRQ;
 
-        //_write(1, "card IRQ\n", 9);
         Wifi_CardIRQ();
 
         REG_SD_IRQSTATUS = SD_IRQ_CARD_IRQ;
@@ -208,33 +205,16 @@ void SDIO_IRQHandler(int irq, void* userdata)
         if (irqreg & SD_IRQ_ERROR)
             ErrorFlags = REG_SD_EIRQSTATUS;
 
-        //IRQFlags |= irqreg;
         EventMask_Signal(IRQEventMask, irqreg);
     }
 }
 
 int SDIO_WaitForIRQ(u16 irq)
 {
-    /*for (;;)
-    {
-        if (IRQFlags & SD_IRQ_ERROR)
-        {
-            IRQFlags &= ~SD_IRQ_ERROR;
-            ErrorFlags = REG_SD_EIRQSTATUS;
-            return 0;
-        }
-
-        if (IRQFlags & irq)
-        {
-            IRQFlags &= ~irq;
-            return 1;
-        }
-
-        WaitForIRQ();
-    }*/
-    u32 timeout = NoTimeout;
+    u32 timeout = 1000;
     u32 res = 0;
-    EventMask_Wait(IRQEventMask, irq | SD_IRQ_ERROR, timeout, &res);
+    if (EventMask_Wait(IRQEventMask, irq | SD_IRQ_ERROR, timeout, &res) < 1)
+        return 0;
     EventMask_Clear(IRQEventMask, res);
 
     if (res & SD_IRQ_ERROR)
@@ -304,7 +284,6 @@ int SDIO_EnablePower()
     Mutex_Acquire(Mutex, NoTimeout);
     REG_SD_POWERCNT = SD_POWER_BUS_ENABLE | SD_POWER_VOLTS(volts);
     WUP_DelayMS(250);
-    printf("REG_SD_POWERCNT=%02X\n", REG_SD_POWERCNT);
 
     u32 ocr_resp = 0;
     if (!SDIO_GetOCR(0, &ocr_resp))
@@ -322,9 +301,7 @@ int SDIO_EnablePower()
         return 0;
     }
 
-    printf("OCR=%08X funcs=%d\n", ocr_resp, SD_NumFuncs);
     SDIO_GetOCR(0xFFF000, &ocr_resp);
-    printf("OCR2=%08X\n", ocr_resp);
     Mutex_Release(Mutex);
     return 1;
 }
@@ -435,7 +412,6 @@ int SDIO_SendCommand(u32 cmd, u32 arg)
         return 0;
     }
 
-    //IRQFlags = 0;
     EventMask_Clear(IRQEventMask, 0xFFFF & ~SD_IRQ_CARD_IRQ);
     REG_SD_ARG = arg;
     REG_SD_COMMAND = cmdreg;

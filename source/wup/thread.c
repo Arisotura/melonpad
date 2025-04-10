@@ -282,6 +282,11 @@ void* Thread_Current()
     return CurThread;
 }
 
+const char* Thread_CurName()
+{
+    return CurThread->Name;
+}
+
 void Thread_Terminate()
 {
     if (CurThread->Flags & Flag_MainThread)

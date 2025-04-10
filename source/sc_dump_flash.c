@@ -4,7 +4,7 @@
 
 #include <wup/wup.h>
 #include <lvgl/lvgl.h>
-#include "lwip/apps/tftp_server.h"
+#include "tftp.h"
 
 #include "main.h"
 #include "sc_dump_flash.h"
@@ -18,31 +18,12 @@ sScreen scDumpFlash =
     .Update = ScDumpFlash_Update
 };
 
-void* DfOpen(const char* fname, const char* mode, u8_t write);
-void DfClose(void* handle);
-int DfRead(void* handle, void* buf, int bytes);
-int DfWrite(void* handle, struct pbuf* p);
-void DfError(void* handle, int err, const char* msg, int size);
+const int kFlashLen = 0x2000000;
 
-static struct tftp_context CtxDumpFlash =
-{
-    .open = DfOpen,
-    .close = DfClose,
-    .read = DfRead,
-    .write = DfWrite,
-    .error = DfError
-};
-
-#define FILE_MAGIC 0x4C494653
-
-typedef struct sFile
-{
-    u32 Magic;
-    u32 StartOffset;
-    u32 Length;
-    u32 Position;
-
-} sFile;
+static int OnTftpStart(const char* filename, const char* mode);
+static int OnTftpRead(int pos, void* data, int len);
+static void OnTftpFinish();
+static void OnTftpError(u16 code, const char* msg);
 
 static lv_obj_t* Screen;
 static lv_obj_t* NwStateLabel;
@@ -51,14 +32,13 @@ static lv_obj_t* TftpProgressBar;
 
 static u8 LastNwState;
 static u8 TftpState;
-static sFile* TftpFile;
 
 
 static void OnBack(lv_event_t* event)
 {
     if (TftpState)
     {
-        tftp_cleanup();
+        //tftp_cleanup();
         TftpState = 0;
     }
 
@@ -74,7 +54,7 @@ static void OnUpdateNwState()
         lv_label_set_text(TftpStateLabel, "");
         if (TftpState)
         {
-            tftp_cleanup();
+            //tftp_cleanup();
             TftpState = 0;
         }
         break;
@@ -84,7 +64,7 @@ static void OnUpdateNwState()
         lv_label_set_text(TftpStateLabel, "");
         if (TftpState)
         {
-            tftp_cleanup();
+            //tftp_cleanup();
             TftpState = 0;
         }
         break;
@@ -93,7 +73,7 @@ static void OnUpdateNwState()
         {
             lv_label_set_text(NwStateLabel, "Network status: connected");
 
-            if (tftp_init_server(&CtxDumpFlash) == ERR_OK)
+            if (TftpSendStart(TFTP_PORT, OnTftpStart, OnTftpRead, OnTftpFinish, OnTftpError))
             {
                 u8 ip[4] = {0};
                 Wifi_GetIPAddr(ip);
@@ -106,7 +86,7 @@ static void OnUpdateNwState()
             }
             else
             {
-                lv_label_set_text(TftpStateLabel, "TFTP server: failed to start");
+                lv_label_set_text(TftpStateLabel, "FTP server: failed to start");
                 TftpState = 0;
             }
         }
@@ -166,17 +146,7 @@ void ScDumpFlash_Close()
 {
     lv_obj_delete(Screen);
 
-    if (TftpState)
-    {
-        tftp_cleanup();
-        TftpState = 0;
-    }
-
-    if (TftpFile)
-    {
-        free(TftpFile);
-        TftpFile = NULL;
-    }
+    // TODO clean up our mess here
 }
 
 void ScDumpFlash_Activate()
@@ -197,75 +167,29 @@ void ScDumpFlash_Update()
 }
 
 
-void* DfOpen(const char* fname, const char* mode, u8_t write)
+static int OnTftpStart(const char* filename, const char* mode)
 {
-    if (TftpFile)
-        return NULL;
-    if (write)
-        return NULL;
-    if (strncmp(mode, "octet", 5))
-        return NULL;
-
-    sFile* file = (sFile*)malloc(sizeof(sFile));
-    file->Magic = FILE_MAGIC;
-    file->StartOffset = 0;
-    file->Length = 32*1024*1024;
-    file->Position = 0;
-
-    TftpFile = file;
-    lv_obj_remove_flag(TftpProgressBar, LV_OBJ_FLAG_HIDDEN);
-    lv_bar_set_value(TftpProgressBar, 0, LV_ANIM_OFF);
-
-    return file;
+    return 1;
 }
 
-void DfClose(void* handle)
+static int OnTftpRead(int pos, void* data, int len)
 {
-    sFile* file = (sFile*)handle;
-    if (!file) return;
-    if (file->Magic != FILE_MAGIC) return;
-    free(file);
+    if (pos >= kFlashLen)
+        return 0;
 
-    if (file == TftpFile)
-    {
-        TftpFile = NULL;
-        lv_obj_add_flag(TftpProgressBar, LV_OBJ_FLAG_HIDDEN);
+    if ((pos + len) > kFlashLen)
+        len = kFlashLen - pos;
 
-        //ScMsgBox("Success", "FLASH successfully dumped!", NULL);
-    }
+    Flash_Read(pos, data, len);
+    return len;
 }
 
-int DfRead(void* handle, void* buf, int bytes)
+static void OnTftpFinish()
 {
-    sFile* file = (sFile*)handle;
-    if (!file) return -1;
-    if (file->Magic != FILE_MAGIC) return -1;
-
-    int lentoread = bytes;
-    if ((file->Position + lentoread) > file->Length)
-        lentoread = file->Length - file->Position;
-
-    if (lentoread > 0)
-    {
-        Flash_Read(file->Position, (u8*)buf, lentoread);
-        file->Position += lentoread;
-    }
-
-    if (file == TftpFile)
-    {
-        int progress = (file->Position * 100) / file->Length;
-        lv_bar_set_value(TftpProgressBar, progress, LV_ANIM_OFF);
-    }
-
-    return lentoread;
+    printf("TFTP finish\n");
 }
 
-int DfWrite(void* handle, struct pbuf* p)
+static void OnTftpError(u16 code, const char* msg)
 {
-    return -1;
-}
-
-void DfError(void* handle, int err, const char* msg, int size)
-{
-    ScMsgBox("Error", msg, NULL);
+    printf("TFTP error %d: %s\n", code, msg);
 }

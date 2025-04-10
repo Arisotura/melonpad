@@ -10,6 +10,7 @@ int Thread_Init();
 void* Thread_Create(fnThreadFunc func, void* userdata, u32 stacksize, u32 prio, const char* name);
 void Thread_Delete(void* thread);
 void* Thread_Current();
+const char* Thread_CurName();
 void Thread_Terminate();
 int Thread_Wait(void* thread, u32 timeout);
 void Thread_Yield();
