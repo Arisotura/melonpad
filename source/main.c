@@ -506,6 +506,7 @@ int NwGetState()
 
 static void NwJoinCallback(int status)
 {
+    lv_lock();
     if (status == WIFI_JOIN_SUCCESS)
     {
         NwSetState(2);
@@ -516,6 +517,7 @@ static void NwJoinCallback(int status)
         NwSetState(0);
         nwLastConnAttempt = WUP_GetTicks();
     }
+    lv_unlock();
 }
 
 void NwConnect()
@@ -695,8 +697,6 @@ void main()
     lv_style_set_radius(&scBodyStyle, 0);
     lv_style_set_pad_all(&scBodyStyle, 10);
 
-    lv_unlock();
-
     scCurrent = NULL;
     memset(scStack, 0, sizeof(scStack));
     scStackLevel = 0;
@@ -707,6 +707,8 @@ void main()
     ScOpen(&scBootMenu, NULL);
     nwDoConnect = 1;
     NwConnect();
+
+    lv_unlock();
 
 	for (;;)
 	{
@@ -721,9 +723,10 @@ void main()
         PwUpdate();
         lv_unlock();
 
-        lv_timer_periodic_handler();
-        //Video_WaitForVMatch();
-        //Video_WaitForVBlank();
-        Thread_Sleep(5);
+        u32 time = lv_timer_handler();
+        if (time == LV_NO_TIMER_READY)
+            time = LV_DEF_REFR_PERIOD;
+
+        Thread_Sleep(time);
 	}
 }
