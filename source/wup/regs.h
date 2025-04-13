@@ -46,10 +46,14 @@
 #define CLKSRC_PLL_SEC3         7
 
 // REG_HARDWARE_RESET settings
+#define RESET_IRQ               (1<<0)
+#define RESET_TIMERS            (1<<1)
+#define RESET_RAM               (1<<2)
 #define RESET_SDIO              (1<<6)
 #define RESET_UART              (1<<8)
 #define RESET_I2C               (1<<13)
 #define RESET_AUDIO             (1<<15)
+#define RESET_VIDEO             (1<<21)
 
 
 // --- IRQ --------------------------------------------------------------------
@@ -92,6 +96,8 @@
 // REG_TIMER_CNT settings
 #define TIMER_UNK0              (1<<0)
 #define TIMER_ENABLE            (1<<1)
+#define TIMER_COUNT_UP          (0<<2)
+#define TIMER_COUNT_DOWN        (1<<2)
 #define TIMER_DIV_2             (0<<4)
 #define TIMER_DIV_4             (1<<4)
 #define TIMER_DIV_8             (2<<4)

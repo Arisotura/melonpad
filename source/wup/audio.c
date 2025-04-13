@@ -18,6 +18,21 @@ static fnRecordCb RecordCB;
 static u32 RecordLength;
 static u32 RecordReadPos;
 
+#define Event_PlaySampleEnd     (1<<0)
+#define Event_PlayStreamAlert   (1<<1)
+#define Event_RecSampleEnd      (1<<2)
+#define Event_RecStreamAlert    (1<<3)
+#define Event_All               0xF
+
+static void* StreamBufPos;
+static int StreamBufLen;
+static void* RecordBufPos;
+static int RecordBufLen;
+
+static void* AudioEvent;
+static void* AudioThread;
+static void AudioThreadFunc(void* userdata);
+
 static void AudioIRQ(int irq, void* userdata);
 static void MicIRQ(int irq, void* userdata);
 
@@ -91,6 +106,13 @@ int Audio_Init()
     REG_AUDIO_UNK1C |= 0x1;
     REG_AUDIO_IRQ_ENABLE = 0;
 
+    StreamBufPos = NULL;
+    StreamBufLen = 0;
+    RecordBufPos = NULL;
+    RecordBufLen = 0;
+
+    AudioEvent = EventMask_Create();
+    AudioThread = Thread_Create(AudioThreadFunc, NULL, 0x1000, 1, "audio");
     WUP_SetIRQHandler(IRQ_AUDIO, AudioIRQ, NULL, 0);
     WUP_SetIRQHandler(IRQ_MIC, MicIRQ, NULL, 0);
 
@@ -152,6 +174,44 @@ void Audio_SetChanOrder(int order)
 }
 
 
+static void AudioThreadFunc(void* userdata)
+{
+    for (;;)
+    {
+        u32 event;
+        if (EventMask_Wait(AudioEvent, Event_All, NoTimeout, &event) < 1)
+            continue;
+
+        EventMask_Clear(AudioEvent, event);
+
+        if (event & Event_PlaySampleEnd)
+        {
+            if (SampleCB)
+                SampleCB();
+
+            SampleCB = NULL;
+        }
+        if (event & Event_PlayStreamAlert)
+        {
+            if (StreamCB)
+                StreamCB(StreamBufPos, StreamBufLen);
+        }
+        if (event & Event_RecSampleEnd)
+        {
+            if (RecordCB)
+                RecordCB(RecordBufPos, RecordBufLen);
+
+            RecordCB = NULL;
+        }
+        if (event & Event_RecStreamAlert)
+        {
+            if (RecordCB)
+                RecordCB(RecordBufPos, RecordBufLen);
+        }
+    }
+}
+
+
 static void AudioIRQ(int irq, void* userdata)
 {
     u32 irqreg = REG_AUDIO_IRQ_STATUS;
@@ -168,10 +228,7 @@ static void AudioIRQ(int irq, void* userdata)
             REG_AUDIO_IRQ_ENABLE &= ~(AUDIO_IRQ_ALERT | AUDIO_IRQ_STOP);
             REG_AUDIO_PLAY_CNT |= PLAYCNT_MUTE;
 
-            if (SampleCB)
-                SampleCB();
-
-            SampleCB = NULL;
+            EventMask_Signal(AudioEvent, Event_PlaySampleEnd);
         }
         else if (Playing == 2)
         {
@@ -188,8 +245,9 @@ static void AudioIRQ(int irq, void* userdata)
             // update the alert count for the next IRQ
             REG_AUDIO_ALERT_COUNT -= (buflen >> 3);
 
-            if (StreamCB)
-                StreamCB((void*)bufpos, buflen);
+            StreamBufPos = (void*)bufpos;
+            StreamBufLen = buflen;
+            EventMask_Signal(AudioEvent, Event_PlayStreamAlert);
         }
     }
 
@@ -339,10 +397,9 @@ static void MicIRQ(int irq, void* userdata)
             REG_MIC_CNT |= MIC_RESET;
             REG_MIC_CNT &= ~MIC_RESET;
 
-            if (RecordCB)
-                RecordCB((void*)bufpos, buflen);
-
-            RecordCB = NULL;
+            RecordBufPos = (void*)bufpos;
+            RecordBufLen = buflen;
+            EventMask_Signal(AudioEvent, Event_RecSampleEnd);
         }
         else if (Recording == 2)
         {
@@ -359,8 +416,9 @@ static void MicIRQ(int irq, void* userdata)
             // update the alert count for the next IRQ
             REG_MIC_ALERT_COUNT += (buflen >> 4);
 
-            if (RecordCB)
-                RecordCB((void*)bufpos, buflen);
+            RecordBufPos = (void*)bufpos;
+            RecordBufLen = buflen;
+            EventMask_Signal(AudioEvent, Event_RecStreamAlert);
         }
     }
 }
