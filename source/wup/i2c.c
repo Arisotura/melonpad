@@ -2,6 +2,11 @@
 
 
 // function pointers to actual I2C implementations
+// TODO:
+// * determine if it's worth it to keep infrastructure for Samsung compatibility
+//   (Samsung stuff is likely prototype hardware and not retail gamepads)
+// * define I2C registers properly
+// * leave out busses other than 3 since they don't work
 
 int (*_I2C_Start)(u32 bus);
 void (*_I2C_Finish)(u32 bus);
@@ -30,7 +35,8 @@ void I2C_IRQHandler(int irq, void* userdata);
 #define STATUS_IRQ_ALL      (STATUS_IRQ_STOP|STATUS_IRQ_READ|STATUS_IRQ_WRITE)
 #define STATUS_XFER_PENDING (1<<7)
 
-static vu8 I2C_BusStatus[5];
+static u8 I2C_BusStatus[5];
+static void* I2C_BusEvent[5];
 
 
 void I2C_Init()
@@ -38,6 +44,7 @@ void I2C_Init()
     for (int i = 0; i < 5; i++)
     {
         I2C_BusStatus[i] = 0;
+        I2C_BusEvent[i] = EventMask_Create();
     }
 
     if (WUP_HardwareType() == 0x41)
@@ -118,31 +125,32 @@ void I2C_Renesas_IRQ(u32 bus)
     vu32* base = (vu32*)(0xF0005800 + (bus<<10));
 
     u32 reg18 = base[0x18>>2];
+    u32 flags = 0;
     if (reg18 & (1<<0))
-        I2C_BusStatus[bus] |= STATUS_IRQ_STOP;
+        flags |= STATUS_IRQ_STOP;
     else if (reg18 & (1<<3))
-        I2C_BusStatus[bus] |= STATUS_IRQ_WRITE;
+        flags |= STATUS_IRQ_WRITE;
     else
-        I2C_BusStatus[bus] |= STATUS_IRQ_READ;
+        flags |= STATUS_IRQ_READ;
+
+    if (flags)
+        EventMask_Signal(I2C_BusEvent[bus], flags);
 
     *(vu32*)0xF0005808 = (1<<bus);
 }
 
 u32 I2C_Renesas_WaitForFlag(u32 bus, u32 flag)
 {
-    for (;;)
-    {
-        u32 irqres = I2C_BusStatus[bus];
-        if (irqres & flag)
-            return irqres & STATUS_IRQ_ALL;
+    u32 res;
+    if (EventMask_Wait(I2C_BusEvent[bus], flag, NoTimeout, &res) < 1)
+        return 0;
 
-        WaitForIRQ();
-    }
+    return res & STATUS_IRQ_ALL;
 }
 
 void I2C_Renesas_ClearFlag(u32 bus, u32 mask)
 {
-    I2C_BusStatus[bus] &= ~mask;
+    EventMask_Clear(I2C_BusEvent[bus], mask);
 }
 
 void I2C_Renesas_StartTransfer(u32 bus)
@@ -158,7 +166,7 @@ void I2C_Renesas_StartTransfer(u32 bus)
     }
 
     u32 f = I2C_Renesas_WaitForFlag(bus, STATUS_IRQ_STOP);
-    I2C_BusStatus[bus] &= ~f;
+    I2C_Renesas_ClearFlag(bus, f);
 
     base[0x8>>2] |= 0x2;
 }
@@ -175,8 +183,8 @@ void I2C_Renesas_FinishTransfer(u32 bus)
         *(vu32*)0xF0005804 |= (1<<bus);
 
     base[0x8>>2] |= 0x1;
-    I2C_Renesas_WaitForFlag(bus, 0x1);
-    I2C_Renesas_ClearFlag(bus, 0x1);
+    I2C_Renesas_WaitForFlag(bus, STATUS_IRQ_STOP);
+    I2C_Renesas_ClearFlag(bus, STATUS_IRQ_STOP);
 
     *(vu32*)0xF0005804 = old5804 & ~(1<<bus);
     I2C_BusStatus[bus] &= ~STATUS_XFER_PENDING;
@@ -224,7 +232,7 @@ int I2C_Renesas_Read(u32 bus, u32 dev, u8* buf, u32 len)
     vu32* base = (vu32*)(0xF0005800 + (bus<<10));
     u32 f;
 
-    I2C_BusStatus[bus] &= ~STATUS_IRQ_ALL;
+    I2C_Renesas_ClearFlag(bus, STATUS_IRQ_ALL);
 
     if (!(I2C_BusStatus[bus] & STATUS_XFER_PENDING))
         base[0x8>>2] |= 0x18;
@@ -240,7 +248,7 @@ int I2C_Renesas_Read(u32 bus, u32 dev, u8* buf, u32 len)
     if (f & STATUS_IRQ_READ)
     {
         if (base[0x18>>2] & 0x4)
-            I2C_BusStatus[bus] &= ~STATUS_IRQ_READ;
+            I2C_Renesas_ClearFlag(bus, STATUS_IRQ_READ);
         else
         {
             I2C_Renesas_FinishTransfer(bus);
@@ -258,7 +266,7 @@ int I2C_Renesas_Read(u32 bus, u32 dev, u8* buf, u32 len)
         I2C_Renesas_Wait(bus);
         f = I2C_Renesas_WaitForFlag(bus, STATUS_IRQ_ALL);
         if (!(f & STATUS_IRQ_READ)) continue;
-        I2C_BusStatus[bus] &= ~STATUS_IRQ_READ;
+        I2C_Renesas_ClearFlag(bus, STATUS_IRQ_READ);
 
         buf[i++] = (u8)base[0x4>>2];
     }
@@ -267,7 +275,7 @@ int I2C_Renesas_Read(u32 bus, u32 dev, u8* buf, u32 len)
     base[0x8>>2] = (base[0x8>>2] & ~0x4) | 0x28;
     I2C_Renesas_Wait(bus);
     I2C_Renesas_WaitForFlag(bus, STATUS_IRQ_READ);
-    I2C_BusStatus[bus] &= ~STATUS_IRQ_READ;
+    I2C_Renesas_ClearFlag(bus, STATUS_IRQ_READ);
 
     I2C_Renesas_FinishTransfer(bus);
     return 1;
@@ -278,7 +286,7 @@ int I2C_Renesas_Write(u32 bus, u32 dev, u8* buf, u32 len, u32 dontstop)
     vu32* base = (vu32*)(0xF0005800 + (bus<<10));
     u32 f;
 
-    I2C_BusStatus[bus] &= ~STATUS_IRQ_ALL;
+    I2C_Renesas_ClearFlag(bus, STATUS_IRQ_ALL);
 
     if (!(I2C_BusStatus[bus] & STATUS_XFER_PENDING))
         base[0x8>>2] |= 0x18;
@@ -297,7 +305,7 @@ int I2C_Renesas_Write(u32 bus, u32 dev, u8* buf, u32 len, u32 dontstop)
         if (!(f & STATUS_IRQ_WRITE)) continue;
         if (base[0x18>>2] & 0x4)
         {
-            I2C_BusStatus[bus] &= ~STATUS_IRQ_WRITE;
+            I2C_Renesas_ClearFlag(bus, STATUS_IRQ_WRITE);
             base[0x4>>2] = buf[i++];
         }
         else
@@ -307,7 +315,7 @@ int I2C_Renesas_Write(u32 bus, u32 dev, u8* buf, u32 len, u32 dontstop)
         }
     }
     I2C_Renesas_WaitForFlag(bus, STATUS_IRQ_WRITE);
-    I2C_BusStatus[bus] &= ~STATUS_IRQ_WRITE;
+    I2C_Renesas_ClearFlag(bus, STATUS_IRQ_WRITE);
 
     if (base[0x18>>2] & 0x4)
     {
