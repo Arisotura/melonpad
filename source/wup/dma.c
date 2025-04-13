@@ -25,11 +25,11 @@ static void DMA_IRQHandler(int irq, void* userdata)
     u32 mask;
     switch (irq)
     {
-    case IRQ_SPDMA0: mask = (1<<0); break;
-    case IRQ_SPDMA1: mask = (1<<1); break;
-    case IRQ_GPDMA0: mask = (1<<2); break;
-    case IRQ_GPDMA1: mask = (1<<3); break;
-    case IRQ_GPDMA2: mask = (1<<4); break;
+    case IRQ_SPDMA0: mask = (1<<0); REG_SPDMA_START(0) = SPDMA_STOP; break;
+    case IRQ_SPDMA1: mask = (1<<1); REG_SPDMA_START(1) = SPDMA_STOP; break;
+    case IRQ_GPDMA0: mask = (1<<2); REG_GPDMA_START(0) = SPDMA_STOP; break;
+    case IRQ_GPDMA1: mask = (1<<3); REG_GPDMA_START(1) = SPDMA_STOP; break;
+    case IRQ_GPDMA2: mask = (1<<4); REG_GPDMA_START(2) = SPDMA_STOP; break;
     default: return;
     }
 
@@ -60,8 +60,6 @@ void SPDMA_Wait(u32 chan)
     {
         EventMask_Wait(IRQEvent, (1 << chan), NoTimeout, NULL);
     }
-
-    REG_SPDMA_START(chan) = SPDMA_STOP;
 }
 
 
@@ -214,6 +212,16 @@ void GPDMA_Wait(u32 chan)
     {
         EventMask_Wait(IRQEvent, (1 << (2+chan)), NoTimeout, NULL);
     }
+}
 
-    REG_GPDMA_START(chan) = GPDMA_STOP;
+void GPDMA_ClearFlag(u32 chan)
+{
+    if (chan > 2) return;
+    EventMask_Clear(IRQEvent, (1 << (2+chan)));
+}
+
+void GPDMA_WaitFlag(u32 chan)
+{
+    if (chan > 2) return;
+    EventMask_Wait(IRQEvent, (1 << (2+chan)), NoTimeout, NULL);
 }

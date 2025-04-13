@@ -270,12 +270,12 @@ static void OnSelectAP(lv_event_t* event)
 
 static void ScanCallback(sScanInfo* list, int num)
 {
+    lv_lock();
+
     // add in the new entries
     sScanInfo* info = list;
-    printf("results returned: %p, %d\n", list, num);
     while (info)
     {
-        printf("res: %s\n", info->SSID);
         lv_obj_t* btn = lv_list_add_button(ScanList, NULL, info->SSID);
         lv_obj_add_event_cb(btn, OnSelectAP, LV_EVENT_CLICKED, info);
 
@@ -310,6 +310,8 @@ static void ScanCallback(sScanInfo* list, int num)
 
     lv_obj_remove_state(ScanBtn, LV_STATE_DISABLED);
     lv_label_set_text(lv_obj_get_child(ScanBtn, 0), "Search");
+
+    lv_unlock();
 }
 
 static void StartScan()
@@ -347,6 +349,8 @@ static void OnJoinMsgOK()
 
 static void JoinCallback(int status)
 {
+    lv_lock();
+
     JoinRes = status;
     JoinTime = WUP_GetTicks();
 
@@ -365,6 +369,8 @@ static void JoinCallback(int status)
 
         JoinMsgPopup = ScMsgBox("Error", msg, NULL);
     }
+
+    lv_unlock();
 }
 
 static void JoinNetwork(sScanInfo* info, const char* pass)

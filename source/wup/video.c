@@ -7,7 +7,7 @@
 
 
 static volatile u8 IsVBlank;
-static volatile u8 IRQFlag;
+static void* IRQEvent;
 static void VBlankIRQ(int irq, void* userdata);
 static void VBlankEndIRQ(int irq, void* userdata);
 static void VMatchIRQ(int irq, void* userdata);
@@ -63,7 +63,7 @@ void Video_Init()
     REG_VCOUNT_MATCH(3) = 0x7FF;
 
     IsVBlank = 0;
-    IRQFlag = 0;
+    IRQEvent = EventMask_Create();
     WUP_SetIRQHandler(IRQ_VBLANK_END, VBlankEndIRQ, NULL, 0);
     WUP_SetIRQHandler(IRQ_VBLANK, VBlankIRQ, NULL, 0);
     WUP_SetIRQHandler(IRQ_VMATCH, VMatchIRQ, NULL, 0);
@@ -73,39 +73,36 @@ void Video_Init()
 static void VBlankIRQ(int irq, void* userdata)
 {
     IsVBlank = 1;
-    IRQFlag |= (1<<0);
+    EventMask_Signal(IRQEvent, (1<<0));
 }
 
 static void VBlankEndIRQ(int irq, void* userdata)
 {
     IsVBlank = 0;
-    IRQFlag |= (1<<1);
+    EventMask_Signal(IRQEvent, (1<<1));
 }
 
 static void VMatchIRQ(int irq, void* userdata)
 {
-    IRQFlag |= (1<<2);
+    EventMask_Signal(IRQEvent, (1<<2));
 }
 
 void Video_WaitForVBlank()
 {
-    IRQFlag &= ~(1<<0);
-    while (!(IRQFlag & (1<<0)))
-        WaitForIRQ();
+    EventMask_Clear(IRQEvent, (1<<0));
+    EventMask_Wait(IRQEvent, (1<<0), NoTimeout, NULL);
 }
 
 void Video_WaitForVBlankEnd()
 {
-    IRQFlag &= ~(1<<1);
-    while (!(IRQFlag & (1<<1)))
-        WaitForIRQ();
+    EventMask_Clear(IRQEvent, (1<<1));
+    EventMask_Wait(IRQEvent, (1<<1), NoTimeout, NULL);
 }
 
 void Video_WaitForVMatch()
 {
-    IRQFlag &= ~(1<<2);
-    while (!(IRQFlag & (1<<2)))
-        WaitForIRQ();
+    EventMask_Clear(IRQEvent, (1<<2));
+    EventMask_Wait(IRQEvent, (1<<2), NoTimeout, NULL);
 }
 
 int Video_GetVCount()

@@ -121,45 +121,46 @@ void ExceptionHandler()
 
 
 
-void flushcb(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
+// NOTE
+// we wait until VBlank to do redrawing, but depending on how much stuff
+// needs to be redrawn, it may last longer than the VBlank interval
+// not sure how to really address this problem (besides making the VBlank longer)
+
+void LvFlushCb(lv_display_t* display, const lv_area_t* area, uint8_t* px_map)
 {
-    /*u8* dst = (u8*)0x380000;
-    int dststride = 856;*/
     u16* dst = Framebuffer;
     int dststride = 854;
 
-    //u32 t1 = REG_COUNTUP_VALUE;
-
-    int i = 0;
-    for (int y = area->y1; y <= area->y2; y++)
-    {
-        for (int x = area->x1; x <= area->x2; x++)
-        {
-            dst[(y*dststride)+x] = ((u16*)px_map)[i++];
-        }
-    }
-
-    /*int linelen = area->x2 - area->x1 + 1;
-    int srcstride = linelen * 2;
+    int srcstride = 2 * (area->x2 - area->x1 + 1);
     int len = srcstride * (area->y2 - area->y1 + 1);
-    DC_FlushRange(px_map, len);
     dst += (area->y1 * dststride) + area->x1;
-    GPDMA_BlitTransfer(2, px_map, srcstride, dst, dststride*2, linelen*2, len);
-    GPDMA_Wait(2);*/
+    dststride *= 2;
 
-    //u32 t2 = REG_COUNTUP_VALUE;
-    //printf("flushcb: %d x %d, %d ns\n", area->x2-area->x1+1, area->y2-area->y1+1, t2-t1);
+    DC_FlushRange(px_map, len);
+    GPDMA_BlitTransfer(0, px_map, srcstride, dst, dststride, srcstride, len);
+}
 
-    lv_display_flush_ready(display);
+void LvFlushWaitCb(lv_display_t* display)
+{
+    GPDMA_Wait(0);
+}
+
+void LvRenderThread(void* userdata)
+{
+    void lv_display_refr_timer(lv_timer_t * timer);
+    
+    for (;;)
+    {
+        Video_WaitForVBlank();
+
+        lv_lock();
+        lv_display_refr_timer(NULL);
+        lv_unlock();
+    }
 }
 
 
-
-
-
-
-sInputData* inputdata;
-void readtouch(lv_indev_t* indev, lv_indev_data_t* data)
+void LvReadTouch(lv_indev_t* indev, lv_indev_data_t* data)
 {
     sInputData* input = Input_GetData();
     if (input->TouchPressed)
@@ -172,15 +173,55 @@ void readtouch(lv_indev_t* indev, lv_indev_data_t* data)
         data->state = LV_INDEV_STATE_RELEASED;
 }
 
-void readkeypad(lv_indev_t* indev, lv_indev_data_t* data)
+// TODO for later: enable keypad navigation
+// and figure out how to make it work nicely
+
+#if 0
+int keymap[] =
 {
+    LV_KEY_ENTER,       BTN_A,
+    LV_KEY_BACKSPACE,   BTN_B,
+    LV_KEY_UP,          BTN_UP,
+    LV_KEY_DOWN,        BTN_DOWN,
+    LV_KEY_PREV,        BTN_LEFT,
+    LV_KEY_NEXT,        BTN_RIGHT,
+    0
+};
+
+int keynum = 0;
+
+void LvReadKeypad(lv_indev_t* indev, lv_indev_data_t* data)
+{
+    sInputData* input = Input_GetData();
     //data->key = LV_KEY_DOWN;
-    data->key = LV_KEY_NEXT;
+    //printf("read keypad\n");
+    /*data->key = LV_KEY_NEXT;
     if (inputdata->ButtonsDown & BTN_DOWN)
         data->state = LV_INDEV_STATE_PRESSED;
     else
+        data->state = LV_INDEV_STATE_RELEASED;*/
+
+    int lvkey = keymap[keynum*2];
+    int wupkey = keymap[keynum*2 + 1];
+
+    data->key = lvkey;
+    if (input->ButtonsDown & wupkey)
+        data->state = LV_INDEV_STATE_PRESSED;
+    else
         data->state = LV_INDEV_STATE_RELEASED;
+
+    if (keymap[keynum*2 + 2])
+    {
+        data->continue_reading = true;
+        keynum++;
+    }
+    else
+    {
+        data->continue_reading = false;
+        keynum = 0;
+    }
 }
+#endif
 
 
 // FLASH
@@ -420,7 +461,6 @@ static void NwUpdateIcon()
     if (!scCurrent->HasTopBar)
         return;
 
-    lv_lock();
     switch (nwState)
     {
     case 0:
@@ -438,7 +478,6 @@ static void NwUpdateIcon()
         lv_image_set_offset_y(scCurrent->TopBar[0], -16);
         break;
     }
-    lv_unlock();
 }
 
 static void NwUpdateQuality()
@@ -557,7 +596,6 @@ void NwUpdate()
 static void PwUpdateIcon()
 {
     sInputData* input = Input_GetData();
-    lv_lock();
     if (input->PowerStatus & 0xC1)
     {
         // connected to external power
@@ -577,7 +615,6 @@ static void PwUpdateIcon()
         case 0: lv_image_set_src(scCurrent->TopBar[1], LV_SYMBOL_BATTERY_EMPTY); break;
         }
     }
-    lv_unlock();
 
     pwLastUpdate = WUP_GetTicks();
 }
@@ -617,18 +654,21 @@ void main()
 
     int lv_fblen = fblen / 10;
     u8* dispbuf1 = (u8*)memalign(16, lv_fblen);
-    u8* dispbuf2 = NULL;//(u8*)memalign(16, lv_fblen);
+    u8* dispbuf2 = (u8*)memalign(16, lv_fblen);
     lv_display_set_buffers(disp, dispbuf1, dispbuf2, lv_fblen, LV_DISPLAY_RENDER_MODE_PARTIAL);
-    lv_display_set_flush_cb(disp, flushcb);
+    lv_display_set_flush_cb(disp, LvFlushCb);
+    lv_display_set_flush_wait_cb(disp, LvFlushWaitCb);
 
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
-    lv_indev_set_read_cb(touch, readtouch);
-    // lv_indev_set_user_data()
+    lv_indev_set_read_cb(touch, LvReadTouch);
 
-    /*lv_indev_t* keypad = lv_indev_create();
+#if 0
+    lv_indev_t* keypad = lv_indev_create();
     lv_indev_set_type(keypad, LV_INDEV_TYPE_KEYPAD);
-    lv_indev_set_read_cb(keypad, readkeypad);*/
+    lv_indev_set_read_cb(keypad, LvReadKeypad);
+    //lv_indev_set_group(keypad, lv_group_get_default());
+#endif
 
     lv_style_init(&scScreenStyle);
     lv_style_set_pad_row(&scScreenStyle, 0);
@@ -668,15 +708,18 @@ void main()
 	{
 		WUP_Update();
 
+        lv_lock();
         scCurrent->Update();
         if (scCloseFlag)
             ScDoCloseCurrent();
 
         NwUpdate();
         PwUpdate();
+        lv_unlock();
 
         lv_timer_periodic_handler();
         //Video_WaitForVMatch();
+        //Video_WaitForVBlank();
         Thread_Sleep(5);
 	}
 }

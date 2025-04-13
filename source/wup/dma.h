@@ -32,4 +32,7 @@ void GPDMA_BlitMaskedFill(u32 chan,
 
 void GPDMA_Wait(u32 chan);
 
+void GPDMA_ClearFlag(u32 chan);
+void GPDMA_WaitFlag(u32 chan);
+
 #endif // _DMA_H_

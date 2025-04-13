@@ -60,6 +60,7 @@ lv_result_t lv_thread_init(lv_thread_t * thread, lv_thread_prio_t prio, void (*c
 
 lv_result_t lv_thread_delete(lv_thread_t * thread)
 {
+    Thread_Wait(*thread, NoTimeout);
     Thread_Delete(*thread);
     return LV_RESULT_OK;
 }
