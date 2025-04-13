@@ -15,6 +15,8 @@ u8 animoffset[6] = {1, 2, 3, 4, 3, 2};
 
 u16* Framebuffer;
 
+void* lvRenderThread;
+
 sScreen* scCurrent;
 sScreen* scStack[8];
 u8 scStackLevel;
@@ -145,9 +147,9 @@ void LvFlushWaitCb(lv_display_t* display)
     GPDMA_Wait(0);
 }
 
-void LvRenderThread(void* userdata)
+void LvRenderThreadFunc(void* userdata)
 {
-    void lv_display_refr_timer(lv_timer_t * timer);
+    void lv_display_refr_timer(lv_timer_t* timer);
     
     for (;;)
     {
@@ -658,6 +660,8 @@ void main()
     lv_display_set_buffers(disp, dispbuf1, dispbuf2, lv_fblen, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(disp, LvFlushCb);
     lv_display_set_flush_wait_cb(disp, LvFlushWaitCb);
+    lv_display_delete_refr_timer(disp);
+    lvRenderThread = Thread_Create(LvRenderThreadFunc, NULL, 0x1000, 2, "lv_render");
 
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);
