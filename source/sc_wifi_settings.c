@@ -133,21 +133,21 @@ static void OnApply(lv_event_t* event)
         str = lv_textarea_get_text(TxtIPAddr);
         if (!str2ip(ip, str))
         {
-            ScMsgBox("Error", "Invalid IP address.", NULL);
+            ScMsgBox("Error", "Invalid IP address.", NULL, "OK", NULL);
             return;
         }
 
         str = lv_textarea_get_text(TxtSubnet);
         if (!str2ip(subnet, str))
         {
-            ScMsgBox("Error", "Invalid subnetwork mask.", NULL);
+            ScMsgBox("Error", "Invalid subnetwork mask.", NULL, "OK", NULL);
             return;
         }
 
         str = lv_textarea_get_text(TxtGateway);
         if (!str2ip(gateway, str))
         {
-            ScMsgBox("Error", "Invalid default gateway address.", NULL);
+            ScMsgBox("Error", "Invalid default gateway address.", NULL, "OK", NULL);
             return;
         }
     }

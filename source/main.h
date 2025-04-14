@@ -10,7 +10,7 @@ typedef void (*fnScreenUpdate)();
 
 typedef void (*fnCloseCB)(int res, void* data);
 
-typedef void (*fnMsgBoxCB)();
+typedef void (*fnMsgBoxCB)(int btn);
 
 typedef struct sScreen
 {
@@ -31,7 +31,7 @@ void ScDoCloseCurrent();
 void ScCloseCurrent(int res, void* data);
 lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title);
 lv_obj_t* ScAddButtonPane(lv_obj_t* screen);
-lv_obj_t* ScMsgBox(const char* title, const char* msg, fnMsgBoxCB callback);
+lv_obj_t* ScMsgBox(const char* title, const char* msg, const char* btn0, const char* btn1, fnMsgBoxCB callback);
 
 void NwLoadSettings();
 void NwConnect();

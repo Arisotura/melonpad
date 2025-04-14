@@ -169,11 +169,9 @@ static void OnPwConnect(lv_event_t* event)
         lv_obj_remove_state(PasswordOkBtn, LV_STATE_DISABLED);
 }*/
 
-static void OnConnCancel(lv_event_t* event)
+static void OnConnCancel(int btn)
 {
     Wifi_Disconnect();
-
-    lv_msgbox_close(ConnectPopup);
 }
 
 static void OpenPasswordPopup(sScanInfo* info)
@@ -233,28 +231,10 @@ static void OpenConnectingPopup(sScanInfo* info)
     lv_obj_remove_state(ScanBtn, LV_STATE_CHECKED);
     lv_obj_remove_flag(ScanBtn, LV_OBJ_FLAG_CHECKABLE);
 
-    lv_obj_t* msgbox = lv_msgbox_create(NULL);
-    lv_obj_set_width(msgbox, 500);
+    char title[100];
+    snprintf(title, 100, "Connecting to %s...", info->SSID);
 
-    char text[100];
-    snprintf(text, 100, "Connecting to %s...", info->SSID);
-    lv_msgbox_add_title(msgbox, text);
-
-    lv_obj_t* content = lv_msgbox_get_content(msgbox);
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t* label = lv_label_create(content);
-    lv_label_set_text(label, "Connecting...");
-
-    lv_obj_t* btn;
-    btn = lv_msgbox_add_footer_button(msgbox, "Cancel");
-    lv_obj_add_event_cb(btn, OnConnCancel, LV_EVENT_CLICKED, info);
-
-    lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
-    lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    ConnectPopup = msgbox;
+    ConnectPopup = ScMsgBox(title, "Connecting...", "Cancel", NULL, OnConnCancel);
 }
 
 static void OnSelectAP(lv_event_t* event)
@@ -333,14 +313,14 @@ static void StartScan()
     if (!Wifi_StartScan(ScanCallback))
     {
         Scanning = 0;
-        ScMsgBox("Error", "Failed to start network search.", NULL);
+        ScMsgBox("Error", "Failed to start network search.", NULL, "OK", NULL);
 
         lv_obj_remove_state(ScanBtn, LV_STATE_DISABLED);
         lv_label_set_text(lv_obj_get_child(ScanBtn, 0), "Search");
     }
 }
 
-static void OnJoinMsgOK()
+static void OnJoinMsgOK(int btn)
 {
     JoinMsgPopup = NULL;
 
@@ -356,7 +336,7 @@ static void JoinCallback(int status)
 
     lv_msgbox_close(ConnectPopup);
     if (status == WIFI_JOIN_SUCCESS)
-        JoinMsgPopup = ScMsgBox("Success", "Connection successful!", OnJoinMsgOK);
+        JoinMsgPopup = ScMsgBox("Success", "Connection successful!", NULL, "OK", OnJoinMsgOK);
     else
     {
         char* msg;
@@ -367,7 +347,7 @@ static void JoinCallback(int status)
         default: msg = "Failed to connect."; break;
         }
 
-        JoinMsgPopup = ScMsgBox("Error", msg, NULL);
+        JoinMsgPopup = ScMsgBox("Error", msg, NULL, "OK", NULL);
     }
 
     lv_unlock();
@@ -388,7 +368,7 @@ static void JoinNetwork(sScanInfo* info, const char* pass)
     if (!Wifi_JoinNetwork(info->SSID, info->AuthType, info->Security, pass, JoinCallback))
     {
         lv_msgbox_close(ConnectPopup);
-        ScMsgBox("Error", "Failed to connect.", NULL);
+        ScMsgBox("Error", "Failed to connect.", NULL, "OK", NULL);
     }
 }
 
@@ -410,6 +390,6 @@ void ScWifiScan_Update()
         ((time - JoinTime) > 1000))
     {
         lv_msgbox_close(JoinMsgPopup);
-        OnJoinMsgOK();
+        OnJoinMsgOK(1);
     }
 }

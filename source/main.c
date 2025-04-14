@@ -400,16 +400,25 @@ lv_obj_t* ScAddButtonPane(lv_obj_t* screen)
     return body;
 }
 
-static void OnMsgBoxClose(lv_event_t* event)
+static void OnMsgBoxClose0(lv_event_t* event)
 {
     lv_obj_t* msgbox = (lv_obj_t*)lv_event_get_user_data(event);
     fnMsgBoxCB callback = (fnMsgBoxCB)lv_obj_get_user_data(msgbox);
     lv_msgbox_close(msgbox);
     if (callback)
-        callback();
+        callback(0);
 }
 
-lv_obj_t* ScMsgBox(const char* title, const char* msg, fnMsgBoxCB callback)
+static void OnMsgBoxClose1(lv_event_t* event)
+{
+    lv_obj_t* msgbox = (lv_obj_t*)lv_event_get_user_data(event);
+    fnMsgBoxCB callback = (fnMsgBoxCB)lv_obj_get_user_data(msgbox);
+    lv_msgbox_close(msgbox);
+    if (callback)
+        callback(1);
+}
+
+lv_obj_t* ScMsgBox(const char* title, const char* msg, const char* btn0, const char* btn1, fnMsgBoxCB callback)
 {
     lv_obj_t* msgbox = lv_msgbox_create(NULL);
     lv_obj_set_width(msgbox, 500);
@@ -425,11 +434,29 @@ lv_obj_t* ScMsgBox(const char* title, const char* msg, fnMsgBoxCB callback)
     lv_label_set_text(label, msg);
 
     lv_obj_t* btn;
-    btn = lv_msgbox_add_footer_button(msgbox, "OK");
-    lv_obj_add_event_cb(btn, OnMsgBoxClose, LV_EVENT_CLICKED, msgbox);
+    lv_flex_align_t align;
+
+    if (btn0)
+    {
+        btn = lv_msgbox_add_footer_button(msgbox, btn0);
+        lv_obj_add_event_cb(btn, OnMsgBoxClose0, LV_EVENT_CLICKED, msgbox);
+    }
+
+    if (btn1)
+    {
+        btn = lv_msgbox_add_footer_button(msgbox, btn1);
+        lv_obj_add_event_cb(btn, OnMsgBoxClose1, LV_EVENT_CLICKED, msgbox);
+    }
+
+    if (btn0 && btn1)
+        align = LV_FLEX_ALIGN_SPACE_BETWEEN;
+    else if (btn1)
+        align = LV_FLEX_ALIGN_END;
+    else
+        align = LV_FLEX_ALIGN_START;
 
     lv_obj_t* footer = lv_msgbox_get_footer(msgbox);
-    lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(footer, align, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
     return msgbox;
 }
@@ -635,10 +662,6 @@ void PwUpdate()
 
 void main()
 {
-    // set VMatch positions to fire every ~5.5ms
-    int vmatchpos[3] = {8, 178, 348};
-    Video_SetVMatchPositions(vmatchpos, 3);
-
     int fblen = 854 * 480 * sizeof(u16);
     Framebuffer = (u16*)memalign(16, fblen);
     memset(Framebuffer, 0, fblen);
