@@ -13,20 +13,11 @@
 
 #include "flash.h"
 
-// route logging to FPGA
-#define FPGA_LOG
-
 void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);
 void WaitForIRQ();
 int IsInIRQ();
-
-void DC_FlushRange(void* addr, int length);
-void DC_InvalidateRange(void* addr, int length);
-void DC_InvalidateAll();
-void IC_InvalidateRange(void* addr, int length);
-void IC_InvalidateAll();
 
 void WUP_Init();
 

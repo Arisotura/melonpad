@@ -6,6 +6,8 @@
 #include <lvgl/lvgl.h>
 
 #include "main.h"
+#include "boot_list.h"
+#include "loader.h"
 #include "sc_boot_menu.h"
 #include "sc_wifi_settings.h"
 #include "sc_dump_flash.h"
@@ -20,10 +22,37 @@ sScreen scBootMenu =
 };
 
 static lv_obj_t* Screen;
+static lv_obj_t* BootListBox;
 
-//
 
-#define ObjDelete(obj) do { if (obj) lv_obj_delete(obj); obj = NULL; } while (0)
+static void OnBootEntry(lv_event_t* event)
+{
+    sBootEntry* entry = (sBootEntry*)lv_event_get_user_data(event);
+    LoadBinaryFromFlash(entry->Offset);
+}
+
+static void PopulateBootList()
+{
+    lv_obj_t* list = BootListBox;
+
+    // clear the list
+    u32 numchild = lv_obj_get_child_count_by_type(list, &lv_list_button_class);
+    for (u32 i = 0; i < numchild; i++)
+    {
+        lv_obj_t* child = lv_obj_get_child_by_type(list, -1, &lv_list_button_class);
+        lv_obj_delete(child);
+    }
+
+    // fill in the new entries
+    for (int i = 0; i < 32; i++)
+    {
+        sBootEntry* entry = &BootList[i];
+        if (entry->Offset == 0xFFFFFFFF) continue;
+
+        lv_obj_t* btn = lv_list_add_button(list, NULL, entry->Title);
+        lv_obj_add_event_cb(btn, OnBootEntry, LV_EVENT_CLICKED, entry);
+    }
+}
 
 static void OnOpenScreen(lv_event_t* event)
 {
@@ -40,26 +69,13 @@ void ScBootMenu_Open()
     lv_obj_t* list1 = lv_list_create(body);
     lv_obj_set_size(list1, lv_pct(70), lv_pct(100));
     lv_obj_align(list1, LV_ALIGN_TOP_LEFT, 0, 0);
-
-    lv_group_t* grp = lv_group_create();
+    BootListBox = list1;
+    
 
     lv_obj_t * btn;
     lv_list_add_text(list1, "Boot menu");
-    btn = lv_list_add_button(list1, NULL, "Stock firmware");
-    lv_group_add_obj(grp, btn);
-    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
-    btn = lv_list_add_button(list1, NULL, "lucario.fw");
-    lv_group_add_obj(grp, btn);
-    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
-    btn = lv_list_add_button(list1, NULL, "Checkerboard");
-    lv_group_add_obj(grp, btn);
-    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
-    btn = lv_list_add_button(list1, NULL, "Ass vibrator");
-    lv_group_add_obj(grp, btn);
-    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
-    btn = lv_list_add_button(list1, NULL, "5 is red");
-    lv_group_add_obj(grp, btn);
-    //lv_obj_add_event_cb(btn, event_handler, LV_EVENT_CLICKED, NULL);
+
+    PopulateBootList();
 
 
     lv_obj_t* list2 = lv_list_create(body);

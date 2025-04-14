@@ -59,7 +59,6 @@ void SPI_Finish()
 
 void SPI_Read(void* buf, int len)
 {
-    DC_FlushRange(buf, len);
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_READ;
 
     REG_SPI_READ_LEN = len;
@@ -67,12 +66,10 @@ void SPI_Read(void* buf, int len)
     SPDMA_Wait(0);
 
     REG_SPI_READ_LEN = 0;
-    DC_InvalidateRange(buf, len);
 }
 
 void SPI_Write(void* buf, int len)
 {
-    DC_FlushRange(buf, len);
     REG_SPI_CNT = (REG_SPI_CNT & ~SPI_DIR_MASK) | SPI_DIR_WRITE;
 
     SPI_IRQStatus &= ~SPI_IRQ_WRITE;

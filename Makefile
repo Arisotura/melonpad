@@ -153,7 +153,7 @@ all: loader_flash $(BUILD)
 
 #---------------------------------------------------------------------------------
 loader_flash:
-	@rm ./loader_flash.bin
+	@rm -f ./loader_flash.bin
 	$(MAKE) -C loader_flash
 
 $(BUILD):
