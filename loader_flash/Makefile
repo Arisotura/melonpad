@@ -14,8 +14,6 @@ export STRIP	:=	$(PREFIX)strip
 export NM	:=	$(PREFIX)gcc-nm
 export RANLIB	:=	$(PREFIX)gcc-ranlib
 
-export FWPACK 	:=	$(CURDIR)/../tools/fwpack
-
 ifeq ($(V),1)
     SILENTMSG := @true
     SILENTCMD :=
@@ -23,9 +21,6 @@ else
     SILENTMSG := @echo
     SILENTCMD := @
 endif
-
-APPTITLE := melonpad
-APPVERSION := 01000000
 
 #---------------------------------------------------------------------------------
 %.a:
@@ -75,23 +70,24 @@ SOURCEDIRS	:= ${shell find source -type d -print}
 TARGET		:=	$(shell basename $(CURDIR))
 BUILD		:=	build
 SOURCES		:=	$(SOURCEDIRS) data
-INCLUDES	:=	source source/lwip/src/include build
+INCLUDES	:=	source build
 
 #---------------------------------------------------------------------------------
 # options for code generation
 #---------------------------------------------------------------------------------
-ARCH	:=	-mthumb -mthumb-interwork
+ARCH	:=	-marm
 
-CFLAGS	:=	-g -Wall -O2\
+CFLAGS	:=	-Wall -O2\
  			-march=armv5te -mtune=arm926ej-s -fomit-frame-pointer\
 			-ffast-math \
+			-nostdlib -nostartfiles -ffreestanding \
 			$(ARCH)
 
 CFLAGS	+=	$(INCLUDE) -DARM9
 CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions
 
-ASFLAGS	:=	-g $(ARCH)
-LDFLAGS	=	-T $(CURDIR)/../melon.ld -g $(ARCH) -nostartfiles -Wl,-Map,$(notdir $*.map)
+ASFLAGS	:=	$(ARCH)
+LDFLAGS	=	-T $(CURDIR)/../melon.ld $(ARCH) -nostdlib -nostartfiles -Wl,-Map,$(notdir $*.map)
 
 # NOTE: -g in CFLAGS ASFLAGS LDFLAGS
 
@@ -122,7 +118,6 @@ export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 CFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.c))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.cpp))
 SFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.s))
-_SFILES		:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.S))
 BINFILES	:=	$(foreach dir,$(SOURCES),$(wildcard $(dir)/*.bin))
 
 #---------------------------------------------------------------------------------
@@ -140,7 +135,7 @@ endif
 #---------------------------------------------------------------------------------
 
 export OFILES	:=	$(BINFILES:.bin=.o) \
-					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o) $(_SFILES:.S=.o)
+					$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
 
 export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 					$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
@@ -148,17 +143,13 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-.PHONY: all loader_flash $(BUILD) fwpack clean
-all: loader_flash $(BUILD)
+.PHONY: all $(BUILD) fwpack clean
+all: $(BUILD)
 
 #---------------------------------------------------------------------------------
-loader_flash:
-	@rm ./loader_flash.bin
-	$(MAKE) -C loader_flash
-
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
-	$(SILENTCMD)for dir in $(SOURCES); do mkdir -p $(BUILD)/$$dir; done
+	for dir in $(SOURCES); do mkdir -p $(BUILD)/$$dir; done
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 fwpack:
@@ -168,7 +159,6 @@ fwpack:
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm loader_flash.bin
 	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).bin
 
 
@@ -180,7 +170,7 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #---------------------------------------------------------------------------------
 # main targets
 #---------------------------------------------------------------------------------
-$(OUTPUT).fw	:	$(OUTPUT).bin
+#$(OUTPUT).fw	:	$(OUTPUT).bin
 $(OUTPUT).bin	: 	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
@@ -188,6 +178,7 @@ $(OUTPUT).elf	:	$(OFILES)
 #---------------------------------------------------------------------------------
 %.elf:
 	$(SILENTMSG) linking $(notdir $@)
+	#$(ADD_COMPILE_COMMAND) end
 	$(SILENTCMD)$(LD)  $(LDFLAGS) $(OFILES) $(LIBPATHS) $(LIBS) -o $@
 
 #---------------------------------------------------------------------------------
@@ -195,13 +186,11 @@ $(OUTPUT).elf	:	$(OFILES)
 	$(SILENTMSG) making $(notdir $@)
 	$(SILENTCMD)$(OBJCOPY) $< -O binary $@
 
-loader_flash.bin:
-	@cp ../loader_flash/loader_flash.bin ../
-
 #---------------------------------------------------------------------------------
-%.fw : %.bin loader_flash.bin
+%.fw : %.bin
 	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) VER_=$(APPVERSION) TITL=$(APPTITLE) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
+	$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
+	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware3.bin WNVR=../wlnvram.bin $@
 
 -include $(DEPENDS)
 

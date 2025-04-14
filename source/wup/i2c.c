@@ -38,6 +38,8 @@ void I2C_IRQHandler(int irq, void* userdata);
 static u8 I2C_BusStatus[5];
 static void* I2C_BusEvent[5];
 
+static void* I2C_Mutex[5];
+
 
 void I2C_Init()
 {
@@ -45,6 +47,7 @@ void I2C_Init()
     {
         I2C_BusStatus[i] = 0;
         I2C_BusEvent[i] = EventMask_Create();
+        I2C_Mutex[i] = Mutex_Create();
     }
 
     if (WUP_HardwareType() == 0x41)
@@ -205,6 +208,8 @@ void I2C_Renesas_Wait(u32 bus)
 
 int I2C_Renesas_Start(u32 bus)
 {
+    Mutex_Acquire(I2C_Mutex[bus], NoTimeout);
+
     vu32* base = (vu32*)(0xF0005800 + (bus<<10));
 
     base[0x10>>2] = 0xC;
@@ -225,6 +230,7 @@ int I2C_Renesas_Start(u32 bus)
 void I2C_Renesas_Finish(u32 bus)
 {
     I2C_Renesas_FinishTransfer(bus);
+    Mutex_Release(I2C_Mutex[bus]);
 }
 
 int I2C_Renesas_Read(u32 bus, u32 dev, u8* buf, u32 len)

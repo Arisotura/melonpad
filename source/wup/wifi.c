@@ -33,6 +33,7 @@ static void* RxThread;
 static void* RxEventMask;
 
 static void* WifiThread;
+static volatile u8 WifiStop;
 
 static u8 ClkEnable;
 static u8 State;
@@ -42,46 +43,16 @@ static u8 MACAddr[6];
 
 static volatile u8 CardIRQFlag;
 
-/*#define Flag_RxMail     (1<<0)
-#define Flag_RxCtl      (1<<1)
-#define Flag_RxEvent    (1<<2)
-#define Flag_RxData     (1<<3)
-#define Flag_RxCredit   (1<<4)*/
-
 static u8 TxSeqno;
 static u8 TxMax;
 static void* TxSemaphore;
 static u16 TxCtlId;
-//static u8 TxBuffer[4096];
 static u8 TxCtlBuffer[2048] __attribute__((aligned(32)));
 static u8 TxDataBuffer[2048] __attribute__((aligned(32)));
 
-//static void* RxMailEvent;
 static u32 RxMail;
 static void* RxCtlMailbox;
 static void* RxEventMailbox;
-static void* RxDataMailbox;
-
-//static volatile u8 RxFlags;
-/*static void* RxEventMask;
-static u32 RxMail;
-static u8 RxCtlBuffer[4096];
-static u8 RxDataBuffer[4096];
-static void* RxCtlMutex;
-static void* RxDataMutex;
-
-static void* RxMailbox;
-
-typedef struct sPacket
-{
-    struct sPacket* Next;
-    u32 Length;
-    u8 Data[1];
-
-} sPacket;
-
-sPacket* PktQueueHead;
-sPacket* PktQueueTail;*/
 
 static fnScanCb ScanCB;
 static sScanInfo* ScanList;
@@ -110,14 +81,8 @@ int Wifi_SendIoctl(u32 opc, u16 flags, void* data, int len);
 int Wifi_GetVar(char* var, void* data, int len);
 int Wifi_SetVar(char* var, void* data, int len);
 
-void send_binary(u8* data, int len);
-void dump_data(u8* data, int len);
-
 static void RxThreadFunc(void* userdata);
 static void WifiThreadFunc(void* userdata);
-
-static void Wifi_HandleEvent(const u8* data);
-static void Wifi_HandleDataFrame(u8* data);
 
 static void ParseWPAInfo(int type, u8* info, u32 len, u8* auth, u8* sec);
 void Wifi_AddScanResult(const u8* apdata, u32 len);
@@ -134,9 +99,6 @@ int Wifi_Init()
     LastActiveTime = WUP_GetTicks();
 
     memset(MACAddr, 0, sizeof(MACAddr));
-
-    //PktQueueHead = NULL;
-    //PktQueueTail = NULL;
 
     ScanCB = NULL;
     ScanList = NULL;
@@ -155,24 +117,11 @@ int Wifi_Init()
     if (!RxCtlMailbox) return 0;
     RxEventMailbox = Mailbox_Create(32);
     if (!RxEventMailbox) return 0;
-    //RxDataMailbox = Mailbox_Create(32);
-    //if (!RxDataMailbox) return 0;
-
-    /*RxEventMask = EventMask_Create();
-    if (!RxEventMask) return 0;
-
-    RxCtlMutex = Mutex_Create();
-    if (!RxCtlMutex) return 0;
-    RxDataMutex = Mutex_Create();
-    if (!RxDataMutex) return 0;
-    SDIOMutex = Mutex_Create();
-    if (!SDIOMutex) return 0;
-
-    RxMailbox = Mailbox_Create(32);
-    if (!RxMailbox) return 0;*/
 
     RxEventMask = EventMask_Create();
     if (!RxEventMask) return 0;
+
+    WifiStop = 0;
 
     RxThread = Thread_Create(RxThreadFunc, NULL, 0x1000, 0, "wifi_rx");
     if (!RxThread) return 0;
@@ -275,7 +224,6 @@ int Wifi_Init()
     TxSeqno = 0xFF;
     TxMax = 0;
     TxCtlId = 1;
-    //RxFlags = 0;
     SDIO_EnableCardIRQ();
 
     if (!Wifi_InitIoctls())
@@ -308,36 +256,40 @@ void OnTcpipInited(void* arg)
 
 void Wifi_DeInit()
 {
-    // TODO: disconnect if needed
+    if (State != State_Idle)
+    {
+        Wifi_Disconnect();
+        Thread_Sleep(100);
+    }
 
-    SDIO_SetClocks(1, 0);
-
-    /*u32 var = 1;
-    int res = Wifi_SendIoctl(3, 0, (u8*)&var, 4, (u8*)&var, 4);
-    printf("down: res=%d resp=%08X\n", res, var);
+    // TODO deinit lwIP??
 
     SDIO_DisableCardIRQ();
 
-    Wifi_AI_SetCore(WIFI_CORE_ARMCM3);
-    Wifi_AI_DisableCore(0);*/
+    WifiStop = 1;
+    Thread_Wait(WifiThread, NoTimeout);
+    Thread_Delete(WifiThread);
+    Mailbox_Delete(RxCtlMailbox);
+    Mailbox_Delete(RxEventMailbox);
 
-    //SDIO_SetClocks(0, 0);
+    EventMask_Signal(RxEventMask, 2);
+    Thread_Wait(RxThread, NoTimeout);
+    Thread_Delete(RxThread);
+    EventMask_Delete(RxEventMask);
+
+    SDIO_SetClocks(1, 0);
+
     u8 regval;
-    /*printf("11\n");
-    u8 regval = 0;
-    SDIO_WriteCardRegs(1, 0x1000E, &regval, 1);
-printf("22\n");*/
-    // dhdsdio_sdclk TODO
 
     regval = 0;
     SDIO_ReadCardRegs(1, 0x10009, &regval, 1);
-    printf("33\n");
     if (!(regval & (1<<3)))
     {
         regval |= (1<<3);
         SDIO_WriteCardRegs(1, 0x10009, &regval, 1);
     }
-    printf("44\n");
+
+    SDIO_SetClocks(0, 0);
 }
 
 
@@ -560,13 +512,6 @@ int Wifi_RxData()
     {
         // data channel
 
-        //if (!Mailbox_Send(RxDataMailbox, buf))
-        /*if (!Mailbox_Send(RxEventMailbox, buf))
-        {
-            printf("wifi: RX data mailbox full!\n");
-            free(buf);
-            return 0;
-        }*/
         struct pbuf* lwbuf = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
         if (!lwbuf)
         {
@@ -620,7 +565,9 @@ static void RxThreadFunc(void* userdata)
 {
     for (;;)
     {
-        EventMask_Wait(RxEventMask, 1, NoTimeout, NULL);
+        u32 event;
+        EventMask_Wait(RxEventMask, 3, NoTimeout, &event);
+        if (event & 2) return;
         EventMask_Clear(RxEventMask, 1);
 
         SDIO_Lock();
@@ -785,78 +732,22 @@ static void Wifi_HandleEvent(const u8* data)
         }
         break;
     }
-
-    if (type != 0x2C)
-        printf("* type=%d flags=%04X status=%08X reason=%08X\n", type, flags, status, reason);
-    //send_binary(data, totallen);
-}
-
-static void Wifi_HandleDataFrame(u8* data)
-{
-    u16 len = READ16LE(data, 0);
-    u8 dataoffset = data[7];
-    len -= (dataoffset + 4);
-
-    struct pbuf* lwbuf = pbuf_alloc(PBUF_RAW, len, PBUF_RAM);
-    if (!lwbuf)
-    {
-        printf("wifi: out of memory!\n");
-        free(data);
-        return;//return 0;
-    }
-
-    const u8* src = &data[dataoffset + 4];
-    struct pbuf* dst = lwbuf;
-    while (dst)
-    {
-        int curlen = dst->len;
-        if (curlen > len) curlen = len;
-
-        memcpy(dst->payload, src, curlen);
-        src += curlen;
-        len -= curlen;
-        if (len < 1) break;
-
-        dst = dst->next;
-    }
-
-    free(data);
-
-    int res = NetIf.input(lwbuf, &NetIf);
-    if (res != ERR_OK)
-    {
-        printf("wifi: could not send frame (error %d)\n", res);
-        pbuf_free(lwbuf);
-        return;//return 1;
-    }
 }
 
 static void WifiThreadFunc(void* userdata)
 {
     for (;;)
     {
+        if (WifiStop) return;
+
         void* dataptr;
         if (Mailbox_Recv(RxEventMailbox, 500, &dataptr) == 1)
         {
             // handle event frame
 
-            //u8 chan = ((u8*)dataptr)[5];
-            //if (chan == 1)
-            {
-                Wifi_HandleEvent((u8*)dataptr);
-                free(dataptr);
-            }
-            /*else
-            {
-                Wifi_HandleDataFrame((u8*)dataptr);
-            }*/
+            Wifi_HandleEvent((u8*)dataptr);
+            free(dataptr);
         }
-        /*if (Mailbox_Recv(RxDataMailbox, 500, &dataptr) == 1)
-        {
-            // handle data frame
-
-            Wifi_HandleDataFrame((u8*)dataptr);
-        }*/
 
         // check for timeouts
 
@@ -1468,7 +1359,7 @@ int Wifi_GetRSSI(s16* p_rssi, u8* p_quality)
         return 0;
     if ((!p_rssi) && (!p_quality))
         return 0;
-return 0;
+
     s32 rssi = 0;
     int res = Wifi_SendIoctl(WLC_GET_RSSI, 2, &rssi, 4);
     if (!res) return 0;

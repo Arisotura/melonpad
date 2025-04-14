@@ -26,7 +26,7 @@
 #define PWR_HEADPHONES      (1<<5)
 #define PWR_CHARGING        (1<<6)
 
-typedef struct
+typedef struct sInputData
 {
     u32 ButtonsDown;
     u32 ButtonsPressed;
@@ -60,6 +60,7 @@ typedef struct
 } sInputData;
 
 void Input_Init();
+void Input_DeInit();
 
 void Input_Scan();
 sInputData* Input_GetData();

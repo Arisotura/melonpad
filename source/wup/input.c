@@ -1,8 +1,11 @@
 #include <wup/wup.h>
 
 
+static void* Mutex;
 static sInputData InputData;
+static sInputData InputDataOut;
 static u8 FirstScan;
+static u8 InputFresh;
 
 // pix1 X,Y  pix2 X,Y  raw1 X,Y  raw2 X,Y
 static u16 TouchCalib[8];
@@ -12,6 +15,8 @@ void Input_Init()
 {
     u8 tmp[32];
     int good;
+
+    Mutex = Mutex_Create();
 
     // read calibration data
 
@@ -40,8 +45,15 @@ void Input_Init()
         memset(TouchCalib, 0, 16); // TODO ??
 
     memset(&InputData, 0, sizeof(InputData));
+    memset(&InputDataOut, 0, sizeof(InputDataOut));
     FirstScan = 1;
+    InputFresh = 0;
     Input_Scan();
+}
+
+void Input_DeInit()
+{
+    Mutex_Delete(Mutex);
 }
 
 
@@ -53,6 +65,8 @@ void Input_Scan()
 
     do UIC_GetInputData(data);
     while ((data[0x00] ^ data[0x7F]) != 0xFF);
+
+    Mutex_Acquire(Mutex, NoTimeout);
 
     u32 lastbtn = InputData.ButtonsDown;
     InputData.ButtonsDown = data[0x02] | (data[0x03] << 8) | (data[0x50] << 16);
@@ -139,6 +153,9 @@ void Input_Scan()
         InputData.ButtonsReleased = 0;
     }
 
+    InputFresh = 1;
+    Mutex_Release(Mutex);
+
     // update audio volume/output
     Audio_SetVolume(InputData.AudioVolume);
     Audio_SetOutput((InputData.PowerStatus & PWR_HEADPHONES) ? 1:0);
@@ -146,5 +163,13 @@ void Input_Scan()
 
 sInputData* Input_GetData()
 {
-    return &InputData;
+    if (InputFresh)
+    {
+        Mutex_Acquire(Mutex, NoTimeout);
+        memcpy(&InputDataOut, &InputData, sizeof(sInputData));
+        InputFresh = 0;
+        Mutex_Release(Mutex);
+    }
+
+    return &InputDataOut;
 }

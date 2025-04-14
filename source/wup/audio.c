@@ -22,7 +22,8 @@ static u32 RecordReadPos;
 #define Event_PlayStreamAlert   (1<<1)
 #define Event_RecSampleEnd      (1<<2)
 #define Event_RecStreamAlert    (1<<3)
-#define Event_All               0xF
+#define Event_StopThread        (1<<4)
+#define Event_All               0x1F
 
 static void* StreamBufPos;
 static int StreamBufLen;
@@ -123,6 +124,11 @@ void Audio_DeInit()
 {
     Audio_Stop();
     Mic_Stop();
+
+    EventMask_Signal(AudioEvent, Event_StopThread);
+    Thread_Wait(AudioThread, NoTimeout);
+    Thread_Delete(AudioThread);
+    EventMask_Delete(AudioEvent);
 }
 
 
@@ -181,6 +187,9 @@ static void AudioThreadFunc(void* userdata)
         u32 event;
         if (EventMask_Wait(AudioEvent, Event_All, NoTimeout, &event) < 1)
             continue;
+
+        if (event & Event_StopThread)
+            return;
 
         EventMask_Clear(AudioEvent, event);
 

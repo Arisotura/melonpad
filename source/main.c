@@ -6,6 +6,7 @@
 #include <lvgl/lvgl.h>
 
 #include "main.h"
+#include "boot_list.h"
 #include "sc_boot_menu.h"
 
 
@@ -16,6 +17,7 @@ u8 animoffset[6] = {1, 2, 3, 4, 3, 2};
 u16* Framebuffer;
 
 void* lvRenderThread;
+volatile u8 lvRenderStop;
 
 sScreen* scCurrent;
 sScreen* scStack[8];
@@ -154,6 +156,7 @@ void LvRenderThreadFunc(void* userdata)
     for (;;)
     {
         Video_WaitForVBlank();
+        if (lvRenderStop) return;
 
         lv_lock();
         lv_display_refr_timer(NULL);
@@ -224,83 +227,6 @@ void LvReadKeypad(lv_indev_t* indev, lv_indev_data_t* data)
     }
 }
 #endif
-
-
-// FLASH
-// 1MB slots
-// 00: boot (taken)
-// 01-04: see how far stock firmware goes (check both banks)
-// 05-08: same
-// 09-10: see how far language bank goes (check both banks)
-// 11-18: same
-// 19-1A: IR shit (taken)
-// 1B: free
-// 1C-1F: service firmware (taken but freeable)
-
-// 0=free 1=taken 2=overwrite warning 3=service fw warning
-// er
-// 0=free 1=
-u8 FlashTable[32];
-
-void InitFlashTable()
-{
-    FlashTable[0x00] = 1;
-    for (int i = 0x01; i < 0x19; i++)
-        FlashTable[i] = 2;
-    FlashTable[0x19] = 1;
-    FlashTable[0x1A] = 1;
-    FlashTable[0x1B] = 0;
-    for (int i = 0x1C; i < 0x20; i++)
-        FlashTable[i] = 3;
-
-    u32 indxinfo[4];
-    Flash_Read(0x100000, (u8*)indxinfo, 16);
-    if (indxinfo[2] == 0x58444E49 && indxinfo[1] < 0x100)
-    {
-        //
-    }
-}
-
-
-
-
-void LoadBinaryFromFlash(u32 addr)
-{
-    AudioAmp_DeInit();
-    //UIC_SetBacklight(0);
-    LCD_DeInit();
-    //Wifi_DeInit();
-    WUP_DelayUS(60);
-
-    /*REG_DMA_CNT = 0;
-
-    REG_SPI_CNT = 0;
-    REG_SPI_SPEED = 0;*/
-
-    //DisableIRQ();
-
-    DC_FlushAll();
-    IC_InvalidateAll();
-    DisableMMU();
-
-    u32 loaderaddr, loaderlen;
-    Flash_GetEntryInfo("LDRf", &loaderaddr, &loaderlen, NULL);
-
-    u8 excepvectors[64];
-    Flash_Read(loaderaddr, excepvectors, 64);
-    Flash_Read(loaderaddr + 64, (u8*)0x3F0000, loaderlen - 64);
-
-    *(vu32*)0xF0001200 = 0xFFFF;
-    *(vu32*)0xF0001204 = 0xFFFF;
-
-    for (int i = 0; i < 64; i++)
-        *(u8*)i = excepvectors[i];
-
-    void* loadermain = (void*)(*(vu32*)0x20);
-    ((void(*)(u32))loadermain)(addr);
-}
-
-
 
 
 void ScOpen(sScreen* sc, fnCloseCB callback)
@@ -670,6 +596,8 @@ void main()
 
     Video_SetDisplayEnable(1);
 
+    BuildBootList();
+
     nwState = 0;
     NwLoadSettings();
 
@@ -686,6 +614,7 @@ void main()
     lv_display_set_flush_cb(disp, LvFlushCb);
     lv_display_set_flush_wait_cb(disp, LvFlushWaitCb);
     lv_display_delete_refr_timer(disp);
+    lvRenderStop = 0;
     lvRenderThread = Thread_Create(LvRenderThreadFunc, NULL, 0x2000, 2, "lv_render");
 
     lv_indev_t* touch = lv_indev_create();
@@ -735,7 +664,7 @@ void main()
 
 	for (;;)
 	{
-		WUP_Update();
+		Input_Scan();
 
         lv_lock();
         scCurrent->Update();
@@ -752,4 +681,19 @@ void main()
 
         Thread_Sleep(time);
 	}
+}
+
+void DeInit()
+{
+    lvRenderStop = 1;
+    Thread_Wait(lvRenderThread, NoTimeout);
+    Thread_Delete(lvRenderThread);
+
+    lv_deinit();
+
+    WUP_DeInit();
+
+    DC_FlushAll();
+    IC_InvalidateAll();
+    DisableMMU();
 }

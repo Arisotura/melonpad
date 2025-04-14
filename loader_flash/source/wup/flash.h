@@ -14,6 +14,6 @@ void Flash_Set4ByteAddr(int val);
 
 void Flash_Read(u32 addr, void* data, int len);
 
-int Flash_GetEntryInfo(char* tag, u32* offset, u32* length, u32* version);
+int Flash_GetCodeAddr(u32 partaddr, u32* codeaddr, u32* codelen);
 
 #endif // _FLASH_H_

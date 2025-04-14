@@ -243,16 +243,15 @@ void WUP_DeInit()
     REG_GPIO_RUMBLE = GPIO_SLEW_FAST_AND_UNK | GPIO_OUTPUT_LOW;
 
     Wifi_DeInit();
+
+    Input_DeInit();
+
+    Audio_DeInit();
     AudioAmp_DeInit();
+
     LCD_DeInit();
-}
 
-void WUP_Update()
-{
-    // TODO! all this stuff should go in dedicated threads
-    // (whenever we get RTOS stuff going)
-
-    Input_Scan();
+    WUP_DelayUS(60);
 }
 
 
