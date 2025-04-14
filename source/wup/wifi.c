@@ -1509,7 +1509,7 @@ void Wifi_SetIPAddr(const u8* ip, const u8* subnet, const u8* gateway)
 {
     if (!ip)
     {
-        netif_set_addr(&NetIf, NULL, NULL, NULL);
+        netifapi_netif_set_addr(&NetIf, NULL, NULL, NULL);
         return;
     }
 
@@ -1519,7 +1519,7 @@ void Wifi_SetIPAddr(const u8* ip, const u8* subnet, const u8* gateway)
     IP4_ADDR(&ip4_subnet, subnet[0], subnet[1], subnet[2], subnet[3]);
     IP4_ADDR(&ip4_gateway, gateway[0], gateway[1], gateway[2], gateway[3]);
 
-    netif_set_addr(&NetIf, &ip4_ip, &ip4_subnet, &ip4_gateway);
+    netifapi_netif_set_addr(&NetIf, &ip4_ip, &ip4_subnet, &ip4_gateway);
 }
 
 int Wifi_GetIPAddr(u8* ip)

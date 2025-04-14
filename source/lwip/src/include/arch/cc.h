@@ -22,6 +22,10 @@
 #define LWIP_PLATFORM_DIAG(x) printf(x)
 #define LWIP_PLATFORM_ASSERT(x) do { printf(x); printf("\n"); DisableIRQ(); for (;;); } while (0)
 
+void sys_mark_tcpip_thread();
+void sys_assert_core_locked();
+#define LWIP_MARK_TCPIP_THREAD() sys_mark_tcpip_thread()
+
 #define LWIP_ERRNO_STDINCLUDE
 
 #ifndef sys_msleep

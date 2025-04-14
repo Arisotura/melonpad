@@ -4,8 +4,24 @@
 #include <wup/wup.h>
 
 
+void* _lwip_tcpip_thread;
+
+
 void sys_init(void)
 {
+    _lwip_tcpip_thread = NULL;
+}
+
+
+void sys_mark_tcpip_thread()
+{
+    _lwip_tcpip_thread = Thread_Current();
+}
+
+void sys_assert_core_locked()
+{
+    if (_lwip_tcpip_thread == NULL) return;
+    LWIP_ASSERT("LWIP CALLED FROM WRONG THREAD!!", (Thread_Current() == _lwip_tcpip_thread));
 }
 
 

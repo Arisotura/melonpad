@@ -223,7 +223,7 @@
  * @see @ref multithreading
  */
 #if !defined LWIP_ASSERT_CORE_LOCKED || defined __DOXYGEN__
-#define LWIP_ASSERT_CORE_LOCKED()
+#define LWIP_ASSERT_CORE_LOCKED() sys_assert_core_locked()
 #endif
 
 
