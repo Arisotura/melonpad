@@ -663,7 +663,7 @@ void main()
     lv_display_set_flush_cb(disp, LvFlushCb);
     lv_display_set_flush_wait_cb(disp, LvFlushWaitCb);
     lv_display_delete_refr_timer(disp);
-    lvRenderThread = Thread_Create(LvRenderThreadFunc, NULL, 0x1000, 2, "lv_render");
+    lvRenderThread = Thread_Create(LvRenderThreadFunc, NULL, 0x2000, 2, "lv_render");
 
     lv_indev_t* touch = lv_indev_create();
     lv_indev_set_type(touch, LV_INDEV_TYPE_POINTER);

@@ -232,7 +232,7 @@ void* Thread_Create(fnThreadFunc func, void* userdata, u32 stacksize, u32 prio, 
     sThread* thread = (sThread*)malloc(sizeof(sThread));
     if (!thread)
     {
-        EnableIRQ();
+        RestoreIRQ(irq);
         return NULL;
     }
 
@@ -242,7 +242,7 @@ void* Thread_Create(fnThreadFunc func, void* userdata, u32 stacksize, u32 prio, 
     if (!stack)
     {
         free(thread);
-        EnableIRQ();
+        RestoreIRQ(irq);
         return NULL;
     }
 
