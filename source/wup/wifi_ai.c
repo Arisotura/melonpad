@@ -311,7 +311,7 @@ u32 Wifi_AI_GetCoreMemBase()
 
 u32 Wifi_AI_ReadCoreMem(u32 addr)
 {
-    u32 val;
+    u32 val = 0;
     SDIO_ReadF1Memory(CurCore->MemBase + addr, &val, 4);
     return val;
 }

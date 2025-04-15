@@ -175,13 +175,11 @@ int Wifi_Init()
     regval = Wifi_AI_ReadCoreMem(0x000);
     Wifi_AI_WriteCoreMem(0x000, regval | (1<<1));
 
-    // removeme?
-    {
-        // stupid shit
-        regval = (1<<1); // enable F1
-        if (!SDIO_WriteCardRegs(0, 0x2, &regval, 1))
-            return 0;
-    }
+    // enable F1
+    regval = (1<<1);
+    if (!SDIO_WriteCardRegs(0, 0x2, &regval, 1))
+        return 0;
+
     SDIO_SetClocks(1, 0);
 
     if (!Wifi_UploadFirmware())
@@ -190,34 +188,33 @@ int Wifi_Init()
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
     SDIO_SetClocks(1, SDIO_CLOCK_FORCE_HT);
 
+    Wifi_AI_SetCore(WIFI_CORE_SDIOD);
+
+    // enable frame transfers
+    Wifi_AI_WriteCoreMem(0x048, (4<<16));
+
+    // enable F2
+    u8 fn = (1<<1) | (1<<2);
+    regval = fn;
+    SDIO_WriteCardRegs(0, 0x2, &regval, 1);
+
+    // wait for it to be ready
+    // TODO have a timeout here?
+    for (;;)
     {
-        Wifi_AI_SetCore(WIFI_CORE_SDIOD);
-
-        // enable frame transfers
-        Wifi_AI_WriteCoreMem(0x048, (4<<16));
-
-        // enable F2
-        u8 fn = (1<<1) | (1<<2);
-        regval = fn;
-        SDIO_WriteCardRegs(0, 0x2, &regval, 1);
-
-        // wait for it to be ready
-        // TODO have a timeout here?
-        for (;;)
-        {
-            regval = 0;
-            SDIO_ReadCardRegs(0, 0x3, &regval, 1);
-            if (regval == fn) break;
-            WUP_DelayUS(1);
-        }
-
-        // enable interrupts
-        Wifi_AI_WriteCoreMem(0x024, 0x200000F0);
-
-        // set watermark
-        regval = 8;
-        SDIO_WriteCardRegs(1, 0x10008, &regval, 1);
+        regval = 0;
+        SDIO_ReadCardRegs(0, 0x3, &regval, 1);
+        if (regval == fn) break;
+        WUP_DelayUS(1);
     }
+
+    // enable interrupts
+    Wifi_AI_WriteCoreMem(0x024, 0x200000F0);
+
+    // set watermark
+    regval = 8;
+    SDIO_WriteCardRegs(1, 0x10008, &regval, 1);
+
 
     SDIO_SetClocks(1, SDIO_CLOCK_REQ_HT);
 
@@ -264,6 +261,7 @@ void Wifi_DeInit()
 
     // TODO deinit lwIP??
 
+    SDIO_SetClocks(1, 0);
     SDIO_DisableCardIRQ();
 
     WifiStop = 1;
@@ -277,10 +275,12 @@ void Wifi_DeInit()
     Thread_Delete(RxThread);
     EventMask_Delete(RxEventMask);
 
-    SDIO_SetClocks(1, 0);
-
     u8 regval;
 
+    regval = 0xF;
+    SDIO_WriteCardRegs(1, 0x1000F, &regval, 1);
+
+    // set the I/O isolation bit if needed
     regval = 0;
     SDIO_ReadCardRegs(1, 0x10009, &regval, 1);
     if (!(regval & (1<<3)))
@@ -289,7 +289,11 @@ void Wifi_DeInit()
         SDIO_WriteCardRegs(1, 0x10009, &regval, 1);
     }
 
-    SDIO_SetClocks(0, 0);
+    // reset the wifi card
+    regval = 0x8;
+    SDIO_WriteCardRegs(0, 0x6, &regval, 1);
+
+    REG_SD_POWERCNT = 0;
 }
 
 

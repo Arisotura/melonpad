@@ -121,6 +121,12 @@ void BuildBootList()
 
     entry = FillBootEntry(entry, stockpart);
 
+    // for stock firmware, mark the other partition as reserved
+    u32 fwslot = stockpart >> 20;
+    u32 fwother = (stocksel == 1) ? 0x01 : 0x05;
+    for (int i = 0; i < 4; i++)
+        FlashMap[fwother+i] = FlashMap[fwslot+i];
+
     // read other entries
     for (int i = 0x01; i < 0x20; i++)
     {

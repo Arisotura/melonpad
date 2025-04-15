@@ -25,7 +25,6 @@ int SDIO_Init()
 {
     SD_Caps = REG_SD_CAPS;
 
-    //IRQFlags = 0;
     IRQEventMask = EventMask_Create();
     if (!IRQEventMask) return 0;
     ErrorFlags = 0;
@@ -46,8 +45,7 @@ int SDIO_Init()
         SD_IRQ_TRANSFER_DONE |
         SD_IRQ_READ_READY |
         SD_IRQ_WRITE_READY |
-        SD_IRQ_DMA |
-        SD_IRQ_ERROR;
+        SD_IRQ_DMA;
     REG_SD_EIRQSIGNALENABLE = 0x0FFF;
 
     WUP_SetIRQHandler(IRQ_SDIO, SDIO_IRQHandler, NULL, 0);
@@ -171,7 +169,7 @@ void SDIO_Unlock()
 
 void SDIO_IRQHandler(int irq, void* userdata)
 {
-    u16 irqreg = REG_SD_IRQSTATUS & REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE;
+    u16 irqreg = REG_SD_IRQSTATUS & ((REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE) | SD_IRQ_ERROR);
     if (!irqreg) return;
 
     if (irqreg & SD_IRQ_CARD_IRQ)
@@ -201,9 +199,12 @@ void SDIO_IRQHandler(int irq, void* userdata)
 
     if (irqreg)
     {
-        REG_SD_IRQSTATUS = irqreg;
         if (irqreg & SD_IRQ_ERROR)
+        {
             ErrorFlags = REG_SD_EIRQSTATUS;
+            REG_SD_EIRQSTATUS = ErrorFlags; // acknowledge it
+        }
+        REG_SD_IRQSTATUS = irqreg;
 
         EventMask_Signal(IRQEventMask, irqreg);
     }
