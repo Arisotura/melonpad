@@ -45,8 +45,8 @@ void SPDMA_Transfer(u32 chan, const void* data, u32 peri, u32 dir, u32 len)
 
     EventMask_Clear(IRQEvent, (1 << chan));
     REG_SPDMA_CNT(chan) = dir | peri;
-    REG_SPDMA_UNK08(chan) = 0;
-    REG_SPDMA_UNK0C(chan) = 0;
+    REG_SPDMA_CHUNKLEN(chan) = 0;
+    REG_SPDMA_MEMSTRIDE(chan) = 0;
     REG_SPDMA_LEN(chan) = len - 1;
     REG_SPDMA_MEMADDR(chan) = (u32)data;
     REG_SPDMA_START(chan) = SPDMA_START;
