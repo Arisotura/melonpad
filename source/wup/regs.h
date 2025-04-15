@@ -118,8 +118,8 @@
 
 #define REG_SPDMA_START(i)      *(vu32*)(0xF0004040 + ((i)*0x20))
 #define REG_SPDMA_CNT(i)        *(vu32*)(0xF0004044 + ((i)*0x20))
-#define REG_SPDMA_UNK08(i)      *(vu32*)(0xF0004048 + ((i)*0x20))
-#define REG_SPDMA_UNK0C(i)      *(vu32*)(0xF000404C + ((i)*0x20))
+#define REG_SPDMA_CHUNKLEN(i)   *(vu32*)(0xF0004048 + ((i)*0x20))
+#define REG_SPDMA_MEMSTRIDE(i)  *(vu32*)(0xF000404C + ((i)*0x20))
 #define REG_SPDMA_LEN(i)        *(vu32*)(0xF0004050 + ((i)*0x20))
 #define REG_SPDMA_MEMADDR(i)    *(vu32*)(0xF0004054 + ((i)*0x20))
 
