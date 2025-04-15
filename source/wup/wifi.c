@@ -261,7 +261,6 @@ void Wifi_DeInit()
 
     // TODO deinit lwIP??
 
-    SDIO_SetClocks(1, 0);
     SDIO_DisableCardIRQ();
 
     WifiStop = 1;
@@ -276,6 +275,8 @@ void Wifi_DeInit()
     EventMask_Delete(RxEventMask);
 
     u8 regval;
+
+    SDIO_SetClocks(1, 0);
 
     regval = 0xF;
     SDIO_WriteCardRegs(1, 0x1000F, &regval, 1);
@@ -571,6 +572,7 @@ static void RxThreadFunc(void* userdata)
     {
         u32 event;
         EventMask_Wait(RxEventMask, 3, NoTimeout, &event);
+        if (event == 3) printf("QUITTING BUT SHIT TO READ\n");
         if (event & 2) return;
         EventMask_Clear(RxEventMask, 1);
 
