@@ -144,6 +144,8 @@
 #define REG_GPDMA_DSTADDR(i)    *(vu32*)(0xF000411C + ((i)*0x40))
 #define REG_GPDMA_FGFILL(i)     *(vu32*)(0xF0004120 + ((i)*0x40))
 #define REG_GPDMA_BGFILL(i)     *(vu32*)(0xF0004124 + ((i)*0x40))
+#define REG_GPDMA_MEMOFFSETP(i) *(vu32*)(0xF0004128 + ((i)*0x40))
+#define REG_GPDMA_MEMOFFSETN(i) *(vu32*)(0xF000412C + ((i)*0x40))
 
 // REG_GPDMA_START settings
 #define GPDMA_START             (1<<0)
@@ -153,8 +155,7 @@
 // REG_GPDMA_CNT settings
 #define GPDMA_REVERSE_16B       (1<<0)
 #define GPDMA_REVERSE_8B        (1<<1)
-#define GPDMA_SRC_DECREMENT     (3<<2)
-#define GPDMA_SRC_INCREMENT     (3<<4)
+#define GPDMA_LOGIC_OP(op)      ((op)<<3)
 #define GPDMA_FILL_8BIT         (0<<6)
 #define GPDMA_FILL_16BIT        (1<<6)
 #define GPDMA_MASKED_FILL       (1<<7)
@@ -162,6 +163,29 @@
 #define GPDMA_MASKED_BGTRANS    (1<<8)
 #define GPDMA_MASKED_REVERSE    (1<<9)
 #define GPDMA_SIMPLE_FILL       (1<<10)
+#define GPDMA_SKIP_1_2B         (4<<16)
+#define GPDMA_SKIP_2_4B         (5<<16)
+#define GPDMA_SKIP_4_8B         (6<<16)
+#define GPDMA_SKIP_8_16B        (7<<16)
+#define GPDMA_MEMOFFSET_SRC     (1<<19)
+#define GPDMA_MEMOFFSET_DST     (1<<20)
+
+#define GPDMA_OP_CLEAR          0   // dst = 0x00
+#define GPDMA_OP_NOR            1   // dst = ~(dst | src)
+#define GPDMA_OP_AND_INV        2   // dst = dst & ~src
+#define GPDMA_OP_COPY_INV       3   // dst = ~src
+#define GPDMA_OP_AND_REV        4   // dst = ~dst & src
+#define GPDMA_OP_INVERT         5   // dst = ~dst
+#define GPDMA_OP_XOR            6   // dst = dst ^ src
+#define GPDMA_OP_NAND           7   // dst = ~(dst & src)
+#define GPDMA_OP_AND            8   // dst = dst & src
+#define GPDMA_OP_EQUIV          9   // dst = ~(dst ^ src)
+#define GPDMA_OP_NOOP           10  // dst = dst
+#define GPDMA_OP_OR_INV         11  // dst = dst | ~src
+#define GPDMA_OP_COPY           12  // dst = src
+#define GPDMA_OP_OR_REV         13  // dst = ~dst | src
+#define GPDMA_OP_OR             14  // dst = dst | src
+#define GPDMA_OP_SET            15  // dst = 0xFF
 
 
 // --- SPI --------------------------------------------------------------------

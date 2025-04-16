@@ -72,7 +72,7 @@ void GPDMA_Transfer(u32 chan, const void* src, void* dst, u32 len)
     GPDMA_Wait(chan);
 
     DMA_IRQFlag[2+chan] = 0;
-    REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT;
+    REG_GPDMA_CNT(chan) = GPDMA_LOGIC_OP(GPDMA_OP_COPY);
     REG_GPDMA_LINELEN(chan) = len;
     REG_GPDMA_SRCSTRIDE(chan) = len;
     REG_GPDMA_DSTSTRIDE(chan) = len;
@@ -103,7 +103,7 @@ void GPDMA_Fill(u32 chan, int fillval, int fill16, void* dst, u32 len)
     }
 
     DMA_IRQFlag[2+chan] = 0;
-    REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_SIMPLE_FILL | fillw;
+    REG_GPDMA_CNT(chan) = GPDMA_LOGIC_OP(GPDMA_OP_COPY) | GPDMA_SIMPLE_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = len;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
     REG_GPDMA_DSTSTRIDE(chan) = len;
@@ -122,7 +122,7 @@ void GPDMA_BlitTransfer(u32 chan, const void* src, u32 srcstride, void* dst, u32
     GPDMA_Wait(chan);
 
     DMA_IRQFlag[2+chan] = 0;
-    REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT;
+    REG_GPDMA_CNT(chan) = GPDMA_LOGIC_OP(GPDMA_OP_COPY);
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = srcstride;
     REG_GPDMA_DSTSTRIDE(chan) = dststride;
@@ -153,7 +153,7 @@ void GPDMA_BlitFill(u32 chan, int fillval, int fill16, void* dst, u32 dststride,
     }
 
     DMA_IRQFlag[2+chan] = 0;
-    REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_SIMPLE_FILL | fillw;
+    REG_GPDMA_CNT(chan) = GPDMA_LOGIC_OP(GPDMA_OP_COPY) | GPDMA_SIMPLE_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
     REG_GPDMA_DSTSTRIDE(chan) = dststride;
@@ -194,7 +194,7 @@ void GPDMA_BlitMaskedFill(u32 chan, const void* mask, int fillfg, int fillbg, in
     }
 
     DMA_IRQFlag[2+chan] = 0;
-    REG_GPDMA_CNT(chan) = GPDMA_SRC_INCREMENT | GPDMA_MASKED_FILL | fillw;
+    REG_GPDMA_CNT(chan) = GPDMA_LOGIC_OP(GPDMA_OP_COPY) | GPDMA_MASKED_FILL | fillw;
     REG_GPDMA_LINELEN(chan) = linelen;
     REG_GPDMA_SRCSTRIDE(chan) = 0;
     REG_GPDMA_DSTSTRIDE(chan) = dststride;
