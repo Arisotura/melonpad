@@ -143,7 +143,9 @@
 #define SPDMA_DIR_READ          (0<<0)
 #define SPDMA_DIR_WRITE         (1<<0)
 #define SPDMA_PERI_SPI          (2<<1)
-#define SPDMA_PERI_IR           (6<<1)
+#define SPDMA_PERI_UART0        (4<<1)
+#define SPDMA_PERI_UART1        (5<<1)
+#define SPDMA_PERI_UART2        (6<<1)
 
 #define REG_GPDMA_START(i)      *(vu32*)(0xF0004100 + ((i)*0x40))
 #define REG_GPDMA_CNT(i)        *(vu32*)(0xF0004104 + ((i)*0x40))
