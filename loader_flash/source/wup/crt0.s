@@ -28,14 +28,11 @@ ldr pc, [pc, #0x18]
 
 vec_reset:
     mov r6, r0
-	mov r0, #0xD2
-	msr cpsr_c, r0
+	msr cpsr_c, #0xD2
 	ldr sp, =__sp_irq
-	mov r0, #0xD3
-    msr cpsr_c, r0
+    msr cpsr_c, #0xD3
     ldr sp, =__sp_svc
-	mov r0, #0xDF
-	msr cpsr_c, r0
+	msr cpsr_c, #0xDF
 	ldr sp, =__sp_usr
 
 	//mov r0, #0xD0

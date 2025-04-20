@@ -37,12 +37,13 @@ sBootEntry* FillBootEntry(sBootEntry* entry, u32 offset)
         {
             hasLVC = 1;
         }
-        else if (tblent[2] == 0x4C544954) // TITL
+        else if ((tblent[2] == 0x5F524556) && (tblent[1] > 4)) // VER_ with title
         {
             hasTITL = 1;
-            u32 tlen = tblent[1];
+            u32 tlen = 0;
+            Flash_Read(offset + tblent[0] + 4, &tlen, 4);
             if (tlen > 255) tlen = 255;
-            Flash_Read(offset + tblent[0], title, tlen);
+            Flash_Read(offset + tblent[0] + 8, title, tlen);
         }
     }
 

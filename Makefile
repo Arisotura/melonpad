@@ -201,7 +201,7 @@ loader_flash.bin:
 #---------------------------------------------------------------------------------
 %.fw : %.bin loader_flash.bin
 	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) VER_=$(APPVERSION) TITL=$(APPTITLE) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
+	$(SILENTCMD)$(FWPACK) version=$(APPVERSION) title=$(APPTITLE) LVC_=$< LDRf=../loader_flash.bin WIFI=../wlfirmware_patched.bin WNVR=../wlnvram.bin $@
 
 -include $(DEPENDS)
 

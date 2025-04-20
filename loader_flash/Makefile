@@ -170,7 +170,6 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #---------------------------------------------------------------------------------
 # main targets
 #---------------------------------------------------------------------------------
-#$(OUTPUT).fw	:	$(OUTPUT).bin
 $(OUTPUT).bin	: 	$(OUTPUT).elf
 $(OUTPUT).elf	:	$(OFILES)
 
@@ -185,12 +184,6 @@ $(OUTPUT).elf	:	$(OFILES)
 %.bin : %.elf
 	$(SILENTMSG) making $(notdir $@)
 	$(SILENTCMD)$(OBJCOPY) $< -O binary $@
-
-#---------------------------------------------------------------------------------
-%.fw : %.bin
-	$(SILENTMSG) packing $(notdir $@)
-	$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware.bin WNVR=../wlnvram.bin $@
-	#$(SILENTCMD)$(FWPACK) LVC_=$< WIFI=../wlfirmware3.bin WNVR=../wlnvram.bin $@
 
 -include $(DEPENDS)
 
