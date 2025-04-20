@@ -21,25 +21,15 @@ void Video_Init()
     REG_LCD_PIXEL_FMT = (REG_LCD_PIXEL_FMT & ~0xFF000C) | 0xFF0008;
     REG_LCD_UNKB4 &= ~0xFFFF;
 
-    if (WUP_HardwareType() == 0x41)
-    {
-        REG_UNK9700 = (REG_UNK9700 & ~0x7FFFFF) | 0x94921;
-        REG_UNK9708 |= 1;
+    REG_UNK9700 = (REG_UNK9700 & ~0x3FFFFFF) | 0x6C9242;
+    REG_UNK9704 |= 0x63;
+    REG_UNK9708 = (REG_UNK9708 & ~0xF) | 5;
 
-        WUP_DelayMS(1);
-    }
-    else
-    {
-        REG_UNK9700 = (REG_UNK9700 & ~0x3FFFFFF) | 0x6C9242;
-        REG_UNK9704 |= 0x63;
-        REG_UNK9708 = (REG_UNK9708 & ~0xF) | 5;
+    WUP_DelayMS(1);
 
-        WUP_DelayMS(1);
-
-        REG_UNK9708 |= 2;
-        while (REG_UNK970C & 1);
-        REG_UNK9708 |= 8;
-    }
+    REG_UNK9708 |= 2;
+    while (REG_UNK970C & 1);
+    REG_UNK9708 |= 8;
 
     REG_LCD_DISP_CNT &= ~0x1F;
     *(vu32*)0xF0008C18 = 0x86531E36;

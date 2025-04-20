@@ -372,6 +372,11 @@
 #define GPIO_ALT_FUNCTION       (1<<0)
 #define GPIO_OUTPUT_MODE        (1<<9)
 #define GPIO_INPUT_MODE         (1<<11)
+#define GPIO_PULL_UP            (1<<12)
+#define GPIO_PULL_DOWN          (1<<13)
+#define GPIO_UNK14              (1<<14)
+#define GPIO_SLEW_FAST          (1<<15)
+#define GPIO_SLEW_FAST_AND_UNK  ((1<<14)|(1<<15))
 
 #define GPIO_OUTPUT_LOW         (GPIO_OUTPUT_MODE | (0<<8))
 #define GPIO_OUTPUT_HIGH        (GPIO_OUTPUT_MODE | (1<<8))
@@ -382,21 +387,6 @@
 #define GPIO_TOGGLE_OUTPUT(reg)     ((reg) ^= (1<<8))
 #define GPIO_SET_OUTPUT_VAL(reg, x) \
     do { if (x) GPIO_SET_OUTPUT_HIGH(reg); else GPIO_SET_OUTPUT_LOW(reg); } while(0)
-
-// firmware tries to set these bits, but they don't seem to actually exist
-// (no idea about bit16)
-#define GPIO_UNK12              (1<<12)
-#define GPIO_UNK13              (1<<13)
-#define GPIO_UNK16              (1<<16)
-
-// these bits are different for the Samsung SoC (REG_HARDWARE_ID LSB == 0x41)
-#define GPIO_REN_UNK            (1<<14)
-#define GPIO_REN_SLEW_FAST      (1<<15)
-
-#define GPIO_SAM_SLEW_FAST      (1<<14)
-#define GPIO_SAM_UNK            (1<<15)
-
-#define GPIO_SLEW_FAST_AND_UNK  ((1<<14)|(1<<15))
 
 
 // --- Audio ------------------------------------------------------------------
