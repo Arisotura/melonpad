@@ -33,6 +33,8 @@
 // route logging to FPGA
 #define FPGA_LOG
 
+typedef void (*fnIRQHandler)(void* user);
+
 void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);

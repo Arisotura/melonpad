@@ -4,7 +4,7 @@
 static void* Mutex;
 
 static void* IRQEvent;
-static void SPI_IRQHandler(int irq, void* userdata);
+static void SPI_IRQHandler(void* userdata);
 
 
 void SPI_Init()
@@ -37,7 +37,7 @@ void SPI_Unlock()
 }
 
 
-static void SPI_IRQHandler(int irq, void* userdata)
+static void SPI_IRQHandler(void* userdata)
 {
     u32 flags = REG_SPI_IRQ_STATUS;
 

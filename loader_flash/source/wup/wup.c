@@ -1,19 +1,19 @@
 #include <wup/wup.h>
 
 
-typedef struct
+typedef struct sIRQHandlerEntry
 {
-    fnIRQHandler handler;
-    void* userdata;
-    int priority;
+    fnIRQHandler Handler;
+    void* UserData;
+    int Priority;
 
 } sIRQHandlerEntry;
 
 sIRQHandlerEntry IRQTable[40];
 
 
-volatile u8 Timer0Flag;
-void Timer0IRQ(int irq, void* userdata);
+static volatile u8 Timer0Flag;
+static void Timer0IRQ(void* userdata);
 
 
 void WUP_Init()
@@ -22,9 +22,9 @@ void WUP_Init()
 
     for (int i = 0; i < 40; i++)
     {
-        IRQTable[i].handler = NULL;
-        IRQTable[i].userdata = NULL;
-        IRQTable[i].priority = 0;
+        IRQTable[i].Handler = NULL;
+        IRQTable[i].UserData = NULL;
+        IRQTable[i].Priority = 0;
     }
 
     REG_IRQ_ACK = 0xF;
@@ -60,9 +60,9 @@ void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
 
     int irqen = DisableIRQ();
 
-    IRQTable[irq].handler = handler;
-    IRQTable[irq].userdata = userdata;
-    IRQTable[irq].priority = prio;
+    IRQTable[irq].Handler = handler;
+    IRQTable[irq].UserData = userdata;
+    IRQTable[irq].Priority = prio;
 
     if (handler)
         WUP_EnableIRQ(irq);
@@ -78,7 +78,7 @@ void WUP_EnableIRQ(u8 irq)
 
     int irqen = DisableIRQ();
 
-    int prio = IRQTable[irq].priority & 0xF;
+    int prio = IRQTable[irq].Priority & 0xF;
     REG_IRQ_ENABLE(irq) = (REG_IRQ_ENABLE(irq) & ~0x4F) | prio;
 
     RestoreIRQ(irqen);
@@ -103,8 +103,8 @@ void IRQHandler()
     if (irqnum < 40)
     {
         sIRQHandlerEntry* entry = &IRQTable[irqnum];
-        if (entry->handler)
-            entry->handler(irqnum, entry->userdata);
+        if (entry->Handler)
+            entry->Handler(entry->UserData);
     }
     else
     {
@@ -115,7 +115,7 @@ void IRQHandler()
 }
 
 
-void Timer0IRQ(int irq, void* userdata)
+static void Timer0IRQ(void* userdata)
 {
     Timer0Flag = 1;
 }

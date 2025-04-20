@@ -8,9 +8,9 @@
 
 static volatile u8 IsVBlank;
 static void* IRQEvent;
-static void VBlankIRQ(int irq, void* userdata);
-static void VBlankEndIRQ(int irq, void* userdata);
-static void VMatchIRQ(int irq, void* userdata);
+static void VBlankIRQ(void* userdata);
+static void VBlankEndIRQ(void* userdata);
+static void VMatchIRQ(void* userdata);
 
 
 void Video_Init()
@@ -60,19 +60,19 @@ void Video_Init()
 }
 
 
-static void VBlankIRQ(int irq, void* userdata)
+static void VBlankIRQ(void* userdata)
 {
     IsVBlank = 1;
     EventMask_Signal(IRQEvent, (1<<0));
 }
 
-static void VBlankEndIRQ(int irq, void* userdata)
+static void VBlankEndIRQ(void* userdata)
 {
     IsVBlank = 0;
     EventMask_Signal(IRQEvent, (1<<1));
 }
 
-static void VMatchIRQ(int irq, void* userdata)
+static void VMatchIRQ(void* userdata)
 {
     EventMask_Signal(IRQEvent, (1<<2));
 }

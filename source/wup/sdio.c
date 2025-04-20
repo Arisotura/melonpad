@@ -4,7 +4,7 @@
 // SDIO TODO
 // * use proper defines for register names, bits, etc
 
-void SDIO_IRQHandler(int irq, void* userdata);
+static void SDIO_IRQHandler(void* userdata);
 void Wifi_CardIRQ();
 
 static u32 SD_Caps;
@@ -167,7 +167,7 @@ void SDIO_Unlock()
     Mutex_Release(Mutex);
 }
 
-void SDIO_IRQHandler(int irq, void* userdata)
+static void SDIO_IRQHandler(void* userdata)
 {
     u16 irqreg = REG_SD_IRQSTATUS & ((REG_SD_IRQSTATUSENABLE & REG_SD_IRQSIGNALENABLE) | SD_IRQ_ERROR);
     if (!irqreg) return;

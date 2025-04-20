@@ -1,7 +1,7 @@
 #include <wup/wup.h>
 
 
-void I2C_IRQHandler(int irq, void* userdata);
+void I2C_IRQHandler(void* userdata);
 
 // bus status flags
 #define STATUS_IRQ_STOP     (1<<0)
@@ -66,7 +66,7 @@ static void I2C_BusIRQ(u32 bus)
     REG_I2C_IRQ_ACK = (1<<bus);
 }
 
-void I2C_IRQHandler(int irq, void* userdata)
+void I2C_IRQHandler(void* userdata)
 {
     u32 irqflags = REG_I2C_IRQ_STATUS;
 

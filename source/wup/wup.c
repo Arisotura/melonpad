@@ -1,11 +1,11 @@
 #include <wup/wup.h>
 
 
-typedef struct
+typedef struct sIRQHandlerEntry
 {
-    fnIRQHandler handler;
-    void* userdata;
-    int priority;
+    fnIRQHandler Handler;
+    void* UserData;
+    int Priority;
 
 } sIRQHandlerEntry;
 
@@ -14,11 +14,11 @@ sIRQHandlerEntry IRQTable[40];
 
 void __libc_init_array();
 
-volatile u8 Timer0Flag;
-void Timer0IRQ(int irq, void* userdata);
+static volatile u8 Timer0Flag;
+static void Timer0IRQ(void* userdata);
 
-volatile u32 TickCount;
-void Timer1IRQ(int irq, void* userdata);
+static volatile u32 TickCount;
+static void Timer1IRQ(void* userdata);
 
 u32 Thread_PostIRQ();
 void Thread_Tick();
@@ -28,9 +28,9 @@ void WUP_Init()
 {
     for (int i = 0; i < 40; i++)
     {
-        IRQTable[i].handler = NULL;
-        IRQTable[i].userdata = NULL;
-        IRQTable[i].priority = 0;
+        IRQTable[i].Handler = NULL;
+        IRQTable[i].UserData = NULL;
+        IRQTable[i].Priority = 0;
     }
 
     for (int i = 0; i < 32; i++)
@@ -252,9 +252,9 @@ void WUP_SetIRQHandler(u8 irq, fnIRQHandler handler, void* userdata, int prio)
 
     int irqen = DisableIRQ();
 
-    IRQTable[irq].handler = handler;
-    IRQTable[irq].userdata = userdata;
-    IRQTable[irq].priority = prio;
+    IRQTable[irq].Handler = handler;
+    IRQTable[irq].UserData = userdata;
+    IRQTable[irq].Priority = prio;
 
     if (handler)
         WUP_EnableIRQ(irq);
@@ -270,7 +270,7 @@ void WUP_EnableIRQ(u8 irq)
 
     int irqen = DisableIRQ();
 
-    int prio = IRQTable[irq].priority & 0xF;
+    int prio = IRQTable[irq].Priority & 0xF;
     REG_IRQ_ENABLE(irq) = (REG_IRQ_ENABLE(irq) & ~0x4F) | prio;
 
     RestoreIRQ(irqen);
@@ -295,12 +295,8 @@ u32 IRQHandler()
     if (irqnum < 40)
     {
         sIRQHandlerEntry* entry = &IRQTable[irqnum];
-        if (entry->handler)
-            entry->handler(irqnum, entry->userdata);
-    }
-    else
-    {
-        // ???
+        if (entry->Handler)
+            entry->Handler(entry->UserData);
     }
 
     REG_IRQ_ACK = ack;
@@ -309,13 +305,13 @@ u32 IRQHandler()
 }
 
 
-void Timer0IRQ(int irq, void* userdata)
+static void Timer0IRQ(void* userdata)
 {
     REG_TIMER_CNT(0) = 0;
     Timer0Flag = 1;
 }
 
-void Timer1IRQ(int irq, void* userdata)
+static void Timer1IRQ(void* userdata)
 {
     TickCount++;
     Thread_Tick();

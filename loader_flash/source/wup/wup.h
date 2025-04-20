@@ -13,6 +13,8 @@
 
 #include "flash.h"
 
+typedef void (*fnIRQHandler)(void* user);
+
 void EnableIRQ();
 int DisableIRQ();
 void RestoreIRQ(int irq);

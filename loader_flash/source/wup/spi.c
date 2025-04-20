@@ -3,8 +3,8 @@
 // SPI TODO:
 // * add DMA transfers
 
-volatile u8 SPI_IRQStatus;
-void SPI_IRQHandler(int irq, void* userdata);
+static volatile u8 SPI_IRQStatus;
+static void SPI_IRQHandler(void* userdata);
 
 
 void SPI_Init()
@@ -25,7 +25,7 @@ void SPI_Init()
 }
 
 
-void SPI_IRQHandler(int irq, void* userdata)
+static void SPI_IRQHandler(void* userdata)
 {
     u32 flags = REG_SPI_IRQ_STATUS;
 

@@ -34,8 +34,8 @@ static void* AudioEvent;
 static void* AudioThread;
 static void AudioThreadFunc(void* userdata);
 
-static void AudioIRQ(int irq, void* userdata);
-static void MicIRQ(int irq, void* userdata);
+static void AudioIRQ(void* userdata);
+static void MicIRQ(void* userdata);
 
 
 int Audio_Init()
@@ -221,7 +221,7 @@ static void AudioThreadFunc(void* userdata)
 }
 
 
-static void AudioIRQ(int irq, void* userdata)
+static void AudioIRQ(void* userdata)
 {
     u32 irqreg = REG_AUDIO_IRQ_STATUS;
 
@@ -382,7 +382,7 @@ void Audio_Stop()
 }
 
 
-static void MicIRQ(int irq, void* userdata)
+static void MicIRQ(void* userdata)
 {
     u32 irqreg = REG_MIC_IRQ_STATUS;
     REG_MIC_IRQ_ACK = irqreg;

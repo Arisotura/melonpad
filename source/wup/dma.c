@@ -2,7 +2,11 @@
 
 
 static void* IRQEvent;
-static void DMA_IRQHandler(int irq, void* userdata);
+static void SPDMA0_IRQHandler(void* userdata);
+static void SPDMA1_IRQHandler(void* userdata);
+static void GPDMA0_IRQHandler(void* userdata);
+static void GPDMA1_IRQHandler(void* userdata);
+static void GPDMA2_IRQHandler(void* userdata);
 
 
 void DMA_Init()
@@ -12,28 +16,42 @@ void DMA_Init()
     REG_DMA_CNT &= ~0xFC;
 
     IRQEvent = EventMask_Create();
-    WUP_SetIRQHandler(IRQ_SPDMA0, DMA_IRQHandler, NULL, 0);
-    WUP_SetIRQHandler(IRQ_SPDMA1, DMA_IRQHandler, NULL, 0);
-    WUP_SetIRQHandler(IRQ_GPDMA0, DMA_IRQHandler, NULL, 0);
-    WUP_SetIRQHandler(IRQ_GPDMA1, DMA_IRQHandler, NULL, 0);
-    WUP_SetIRQHandler(IRQ_GPDMA2, DMA_IRQHandler, NULL, 0);
+    WUP_SetIRQHandler(IRQ_SPDMA0, SPDMA0_IRQHandler, NULL, 0);
+    WUP_SetIRQHandler(IRQ_SPDMA1, SPDMA1_IRQHandler, NULL, 0);
+    WUP_SetIRQHandler(IRQ_GPDMA0, GPDMA0_IRQHandler, NULL, 0);
+    WUP_SetIRQHandler(IRQ_GPDMA1, GPDMA1_IRQHandler, NULL, 0);
+    WUP_SetIRQHandler(IRQ_GPDMA2, GPDMA2_IRQHandler, NULL, 0);
 }
 
 
-static void DMA_IRQHandler(int irq, void* userdata)
+static void SPDMA0_IRQHandler(void* userdata)
 {
-    u32 mask;
-    switch (irq)
-    {
-    case IRQ_SPDMA0: mask = (1<<0); REG_SPDMA_START(0) = SPDMA_STOP; break;
-    case IRQ_SPDMA1: mask = (1<<1); REG_SPDMA_START(1) = SPDMA_STOP; break;
-    case IRQ_GPDMA0: mask = (1<<2); REG_GPDMA_START(0) = SPDMA_STOP; break;
-    case IRQ_GPDMA1: mask = (1<<3); REG_GPDMA_START(1) = SPDMA_STOP; break;
-    case IRQ_GPDMA2: mask = (1<<4); REG_GPDMA_START(2) = SPDMA_STOP; break;
-    default: return;
-    }
+    REG_SPDMA_START(0) = SPDMA_STOP;
+    EventMask_Signal(IRQEvent, (1<<0));
+}
 
-    EventMask_Signal(IRQEvent, mask);
+static void SPDMA1_IRQHandler(void* userdata)
+{
+    REG_SPDMA_START(1) = SPDMA_STOP;
+    EventMask_Signal(IRQEvent, (1<<1));
+}
+
+static void GPDMA0_IRQHandler(void* userdata)
+{
+    REG_GPDMA_START(0) = GPDMA_STOP;
+    EventMask_Signal(IRQEvent, (1<<2));
+}
+
+static void GPDMA1_IRQHandler(void* userdata)
+{
+    REG_GPDMA_START(1) = GPDMA_STOP;
+    EventMask_Signal(IRQEvent, (1<<3));
+}
+
+static void GPDMA2_IRQHandler(void* userdata)
+{
+    REG_GPDMA_START(2) = GPDMA_STOP;
+    EventMask_Signal(IRQEvent, (1<<4));
 }
 
 
