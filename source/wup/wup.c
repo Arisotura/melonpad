@@ -26,6 +26,9 @@ void Thread_Tick();
 
 void WUP_Init()
 {
+    if (WUP_HardwareType() == 0x41)
+        ExceptionHandler(3, NULL);
+
     for (int i = 0; i < 40; i++)
     {
         IRQTable[i].Handler = NULL;

@@ -8,6 +8,7 @@
 
 #include "types.h"
 #include "regs.h"
+#include "exception.h"
 
 #include "thread.h"
 

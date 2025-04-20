@@ -29,14 +29,15 @@ _start:
 
 
 vec_reset:
-	mov r0, #0xD2
-	msr cpsr_c, r0
+	msr cpsr_c, #0xD2
 	ldr sp, =__sp_irq
-	mov r0, #0xD3
-    msr cpsr_c, r0
+    msr cpsr_c, #0xD3
     ldr sp, =__sp_svc
-	mov r0, #0xDF
-	msr cpsr_c, r0
+    msr cpsr_c, #0xD7
+    ldr sp, =__sp_svc
+    msr cpsr_c, #0xDB
+    ldr sp, =__sp_svc
+	msr cpsr_c, #0xDF
 	ldr sp, =__sp_usr
 
 	bl setup_mmu
@@ -100,8 +101,25 @@ vec_irq:
 
 
 vec_undefined:
+    stmdb sp!, {r0-r15}
+    mov r0, #0
+    mov r1, sp
+    ldr r3, =ExceptionHandler
+    blx r3
+    b halt_loop
+
 vec_prefabort:
+    stmdb sp!, {r0-r15}
+    mov r0, #1
+    mov r1, sp
+    ldr r3, =ExceptionHandler
+    blx r3
+    b halt_loop
+
 vec_dataabort:
+    stmdb sp!, {r0-r15}
+    mov r0, #2
+    mov r1, sp
     ldr r3, =ExceptionHandler
     blx r3
     b halt_loop

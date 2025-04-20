@@ -1,7 +1,7 @@
 #ifndef _CONSOLE_H_
 #define _CONSOLE_H_
 
-int Console_Open(int w, int h);
+int Console_Open(int w, int h, u32 bgcolor, u32 fgcolor);
 int Console_OpenDefault();
 void Console_Close();
 

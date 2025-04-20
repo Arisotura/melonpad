@@ -15,7 +15,7 @@ static u8* Buffer = NULL;
 static u8 Dirty = 0;
 
 
-int Console_Open(int w, int h)
+int Console_Open(int w, int h, u32 bgcolor, u32 fgcolor)
 {
     // the buffer's stride needs to match that of the framebuffer
     LineStride = 856 / 8;
@@ -26,9 +26,9 @@ int Console_Open(int w, int h)
         return 0;
 
     u32 pal[256];
-    pal[0] = 0xFF000000;
+    pal[0] = bgcolor;
     for (int i = 1; i < 256; i++)
-        pal[i] = 0xFFFFFFFF;
+        pal[i] = fgcolor;
 
     Video_SetOvlPalette(0, pal, 256);
 
@@ -43,7 +43,7 @@ int Console_Open(int w, int h)
 
 int Console_OpenDefault()
 {
-    return Console_Open(106, 30);
+    return Console_Open(106, 30, 0xFF000000, 0xFFFFFFFF);
 }
 
 void Console_Close()

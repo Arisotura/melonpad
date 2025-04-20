@@ -117,14 +117,6 @@ void dump_data(u8* data, int len)
 }
 
 
-
-void ExceptionHandler()
-{
-    send_string("EXCEPTION\n");
-}
-
-
-
 // NOTE
 // we wait until VBlank to do redrawing, but depending on how much stuff
 // needs to be redrawn, it may last longer than the VBlank interval
