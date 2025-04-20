@@ -3,7 +3,7 @@
 
 extern sScreen scDumpFlash;
 
-void ScDumpFlash_Open();
+void ScDumpFlash_Open(void* data);
 void ScDumpFlash_Close();
 void ScDumpFlash_Activate();
 void ScDumpFlash_Update();

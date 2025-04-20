@@ -56,6 +56,7 @@ sBootEntry* FillBootEntry(sBootEntry* entry, u32 offset)
     entry->Slot = slot;
     entry->NumSlots = nslots;
 
+    // TODO: only mark it as stock/service if it is really the stock thing
     if (hasTITL)
         strncpy(entry->Title, title, 255);
     else if ((offset == 0x100000) || (offset == 0x500000))

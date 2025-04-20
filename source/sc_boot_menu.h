@@ -3,7 +3,7 @@
 
 extern sScreen scBootMenu;
 
-void ScBootMenu_Open();
+void ScBootMenu_Open(void* data);
 void ScBootMenu_Close();
 void ScBootMenu_Activate();
 void ScBootMenu_Update();

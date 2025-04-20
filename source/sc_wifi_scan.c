@@ -80,7 +80,7 @@ static void OnSearch(lv_event_t* event)
     }
 }
 
-void ScWifiScan_Open()
+void ScWifiScan_Open(void* data)
 {
     Screen = lv_obj_create(NULL);
     lv_obj_t* body = ScAddTopbar(Screen, "Search for wifi networks");

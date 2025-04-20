@@ -38,7 +38,7 @@ static void OnBack(lv_event_t* event)
     ScCloseCurrent(0, NULL);
 }
 
-void ScHardwareInfo_Open()
+void ScHardwareInfo_Open(void* data)
 {
     char str[64];
     u8 tmp[16];

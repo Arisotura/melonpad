@@ -215,25 +215,25 @@ int AudioAmp_GetType()
 
 u8 AudioAmp_ReadReg(u8 reg)
 {
-    I2C_Start(I2C_BUS_AUDIO_AMP);
+    I2C_Start();
 
     u8 data = reg;
     u8 ret = 0;
-    I2C_Write(I2C_BUS_AUDIO_AMP, I2C_DEV_AUDIO_AMP, &data, 1, 0);
-    I2C_Read(I2C_BUS_AUDIO_AMP, I2C_DEV_AUDIO_AMP, &ret, 1);
+    I2C_Write(I2C_DEV_AUDIO_AMP, &data, 1, 0);
+    I2C_Read(I2C_DEV_AUDIO_AMP, &ret, 1);
 
-    I2C_Finish(I2C_BUS_AUDIO_AMP);
+    I2C_Finish();
     return ret;
 }
 
 void AudioAmp_WriteReg(u8 reg, u8 val)
 {
-    I2C_Start(I2C_BUS_AUDIO_AMP);
+    I2C_Start();
 
     u8 data[2] = {reg, val};
-    I2C_Write(I2C_BUS_AUDIO_AMP, I2C_DEV_AUDIO_AMP, data, 2, 0);
+    I2C_Write(I2C_DEV_AUDIO_AMP, data, 2, 0);
 
-    I2C_Finish(I2C_BUS_AUDIO_AMP);
+    I2C_Finish();
 }
 
 void AudioAmp_SetPage(u8 page)

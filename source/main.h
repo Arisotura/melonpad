@@ -3,7 +3,7 @@
 
 #include <wup/types.h>
 
-typedef void (*fnScreenOpen)();
+typedef void (*fnScreenOpen)(void* data);
 typedef void (*fnScreenClose)();
 typedef void (*fnScreenActivate)();
 typedef void (*fnScreenUpdate)();
@@ -26,7 +26,7 @@ typedef struct sScreen
 
 } sScreen;
 
-void ScOpen(sScreen* sc, fnCloseCB callback);
+void ScOpen(sScreen* sc, void* data, fnCloseCB callback);
 void ScDoCloseCurrent();
 void ScCloseCurrent(int res, void* data);
 lv_obj_t* ScAddTopbar(lv_obj_t* screen, const char* title);

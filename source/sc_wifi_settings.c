@@ -218,7 +218,7 @@ static void OnScanRet(int res, void* data)
 
 static void OnNetworkSearch(lv_event_t* event)
 {
-    ScOpen(&scWifiScan, OnScanRet);
+    ScOpen(&scWifiScan, NULL, OnScanRet);
 }
 
 static void OnTextareaEvent(lv_event_t* event)
@@ -294,7 +294,7 @@ static void OnChangeAutoIP(lv_event_t* event)
     }
 }
 
-void ScWifiSettings_Open()
+void ScWifiSettings_Open(void* data)
 {
     lv_obj_t* label;
     lv_obj_t* field;

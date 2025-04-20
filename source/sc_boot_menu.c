@@ -57,10 +57,10 @@ static void PopulateBootList()
 static void OnOpenScreen(lv_event_t* event)
 {
     sScreen* screen = (sScreen*)lv_event_get_user_data(event);
-    ScOpen(screen, NULL);
+    ScOpen(screen, NULL, NULL);
 }
 
-void ScBootMenu_Open()
+void ScBootMenu_Open(void* data)
 {
     Screen = lv_obj_create(NULL);
     lv_obj_t* body = ScAddTopbar(Screen, "melonpad v0.1");

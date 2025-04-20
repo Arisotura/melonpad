@@ -3,7 +3,7 @@
 
 extern sScreen scHardwareInfo;
 
-void ScHardwareInfo_Open();
+void ScHardwareInfo_Open(void* data);
 void ScHardwareInfo_Close();
 void ScHardwareInfo_Activate();
 void ScHardwareInfo_Update();

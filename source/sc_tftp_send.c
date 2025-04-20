@@ -7,18 +7,18 @@
 #include "tftp.h"
 
 #include "main.h"
-#include "sc_dump_flash.h"
+#include "sc_tftp_send.h"
 
 
-sScreen scDumpFlash =
+sScreen scTftpSend =
 {
-    .Open = ScDumpFlash_Open,
-    .Close = ScDumpFlash_Close,
-    .Activate = ScDumpFlash_Activate,
-    .Update = ScDumpFlash_Update
+    .Open = ScTftpSend_Open,
+    .Close = ScTftpSend_Close,
+    .Activate = ScTftpSend_Activate,
+    .Update = ScTftpSend_Update
 };
 
-const int kFlashLen = 0x2000000;
+//const int kFlashLen = 0x2000000;
 
 static int OnTftpStart(const char* filename, const char* mode);
 static int OnTftpRead(int pos, void* data, int len);
@@ -94,7 +94,7 @@ static void OnUpdateNwState()
     }
 }
 
-void ScDumpFlash_Open(void* data)
+void ScTftpSend_Open(void* data)
 {
     lv_obj_t* label;
     char str[64];
@@ -142,21 +142,21 @@ void ScDumpFlash_Open(void* data)
     TftpState = 0;
 }
 
-void ScDumpFlash_Close()
+void ScTftpSend_Close()
 {
     lv_obj_delete(Screen);
 
     // TODO clean up our mess here
 }
 
-void ScDumpFlash_Activate()
+void ScTftpSend_Activate()
 {
     LastNwState = 0xFF;
 
     lv_screen_load(Screen);
 }
 
-void ScDumpFlash_Update()
+void ScTftpSend_Update()
 {
     int nwstate = NwGetState();
     if (nwstate != LastNwState)
@@ -174,11 +174,11 @@ static int OnTftpStart(const char* filename, const char* mode)
 
 static int OnTftpRead(int pos, void* data, int len)
 {
-    if (pos >= kFlashLen)
+    //if (pos >= kFlashLen)
         return 0;
 
-    if ((pos + len) > kFlashLen)
-        len = kFlashLen - pos;
+   // if ((pos + len) > kFlashLen)
+     //   len = kFlashLen - pos;
 
     Flash_Read(pos, data, len);
     return len;

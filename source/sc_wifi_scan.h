@@ -11,7 +11,7 @@ typedef struct sWifiScanResult
 
 extern sScreen scWifiScan;
 
-void ScWifiScan_Open();
+void ScWifiScan_Open(void* data);
 void ScWifiScan_Close();
 void ScWifiScan_Activate();
 void ScWifiScan_Update();

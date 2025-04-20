@@ -3,7 +3,7 @@
 
 extern sScreen scWifiSettings;
 
-void ScWifiSettings_Open();
+void ScWifiSettings_Open(void* data);
 void ScWifiSettings_Close();
 void ScWifiSettings_Activate();
 void ScWifiSettings_Update();

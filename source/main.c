@@ -229,7 +229,7 @@ void LvReadKeypad(lv_indev_t* indev, lv_indev_data_t* data)
 #endif
 
 
-void ScOpen(sScreen* sc, fnCloseCB callback)
+void ScOpen(sScreen* sc, void* data, fnCloseCB callback)
 {
     if (scStackLevel >= 8)
     {
@@ -243,7 +243,7 @@ void ScOpen(sScreen* sc, fnCloseCB callback)
     scCurrent = sc;
     sc->CloseCB = callback;
     sc->HasTopBar = 0;
-    sc->Open();
+    sc->Open(data);
     sc->Activate();
 }
 
@@ -656,7 +656,7 @@ void main()
     scCloseRes = 0;
     scCloseData = NULL;
 
-    ScOpen(&scBootMenu, NULL);
+    ScOpen(&scBootMenu, NULL, NULL);
     nwDoConnect = 1;
     NwConnect();
 

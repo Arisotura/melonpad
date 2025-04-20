@@ -16,12 +16,12 @@
 #define REG_PLL_UNK28           *(vu32*)0xF0000028
 #define REG_PLL_UNK2C           *(vu32*)0xF000002C
 #define REG_UNK30               *(vu32*)0xF0000030
-#define REG_CLK_PIXEL           *(vu32*)0xF0000034
+#define REG_CLK_PIXELCLK        *(vu32*)0xF0000034
 #define REG_CLK_CAMERA          *(vu32*)0xF0000038
 #define REG_CLK_AUDIOAMP        *(vu32*)0xF000003C
-#define REG_CLK_UNK40           *(vu32*)0xF0000040
-#define REG_CLK_UNK44           *(vu32*)0xF0000044
-#define REG_CLK_UNK48           *(vu32*)0xF0000048
+#define REG_CLK_UART0           *(vu32*)0xF0000040
+#define REG_CLK_UART1           *(vu32*)0xF0000044
+#define REG_CLK_UART2           *(vu32*)0xF0000048
 #define REG_CLK_I2C             *(vu32*)0xF000004C
 #define REG_CLK_UNK50           *(vu32*)0xF0000050
 #define REG_CLK_SDIO            *(vu32*)0xF0000054
@@ -49,9 +49,17 @@
 #define RESET_IRQ               (1<<0)
 #define RESET_TIMERS            (1<<1)
 #define RESET_RAM               (1<<2)
+#define RESET_DMA               (1<<3)
+#define RESET_SPI               (1<<4)
 #define RESET_SDIO              (1<<6)
-#define RESET_UART              (1<<8)
-#define RESET_I2C               (1<<13)
+#define RESET_UART0             (1<<7)
+#define RESET_UART1             (1<<8)
+#define RESET_UART2             (1<<9)
+#define RESET_I2C0              (1<<10)
+#define RESET_I2C1              (1<<11)
+#define RESET_I2C2              (1<<12)
+#define RESET_I2C3              (1<<13)
+#define RESET_I2C4              (1<<14)
 #define RESET_AUDIO             (1<<15)
 #define RESET_VIDEO             (1<<21)
 
@@ -69,6 +77,9 @@
 #define IRQ_TIMER0              0x00
 #define IRQ_TIMER1              0x01
 #define IRQ_SDIO                0x02
+#define IRQ_UART0               0x03
+#define IRQ_UART1               0x04
+#define IRQ_UART2               0x05
 #define IRQ_SPI                 0x06
 #define IRQ_SPI_UNK             0x07
 #define IRQ_SPDMA0              0x08
@@ -155,7 +166,7 @@
 // REG_GPDMA_CNT settings
 #define GPDMA_REVERSE_16B       (1<<0)
 #define GPDMA_REVERSE_8B        (1<<1)
-#define GPDMA_LOGIC_OP(op)      ((op)<<3)
+#define GPDMA_LOGIC_OP(op)      ((op)<<2)
 #define GPDMA_FILL_8BIT         (0<<6)
 #define GPDMA_FILL_16BIT        (1<<6)
 #define GPDMA_MASKED_FILL       (1<<7)
@@ -237,6 +248,66 @@
 #define SPI_DEVICE_UIC          (1<<1)
 
 
+// --- UART -------------------------------------------------------------------
+
+#define REG_UART_DATA_OUT(i)    *(vu32*)(0xF0004C00 + ((i)*0x40))
+#define REG_UART_DATA_IN(i)     *(vu32*)(0xF0004C04 + ((i)*0x40))
+#define REG_UART_IRQ_ENABLE(i)  *(vu32*)(0xF0004C08 + ((i)*0x40))
+#define REG_UART_IRQ_STATUS(i)  *(vu32*)(0xF0004C0C + ((i)*0x40))
+#define REG_UART_UNK10(i)       *(vu32*)(0xF0004C10 + ((i)*0x40))
+#define REG_UART_CNT1(i)        *(vu32*)(0xF0004C14 + ((i)*0x40))
+#define REG_UART_UNK18(i)       *(vu32*)(0xF0004C18 + ((i)*0x40))
+#define REG_UART_STATUS(i)      *(vu32*)(0xF0004C1C + ((i)*0x40))
+#define REG_UART_UNK20(i)       *(vu32*)(0xF0004C20 + ((i)*0x40))
+#define REG_UART_CLK_DIV1(i)    *(vu32*)(0xF0004C24 + ((i)*0x40))
+#define REG_UART_CLK_MULT(i)    *(vu32*)(0xF0004C28 + ((i)*0x40))
+#define REG_UART_CLK_DIV2(i)    *(vu32*)(0xF0004C2C + ((i)*0x40))
+#define REG_UART_CNT2(i)        *(vu32*)(0xF0004C30 + ((i)*0x40))
+#define REG_UART_RX_STAT(i)     *(vu32*)(0xF0004C34 + ((i)*0x40))
+#define REG_UART_TX_STAT(i)     *(vu32*)(0xF0004C38 + ((i)*0x40))
+#define REG_UART_UNK3C(i)       *(vu32*)(0xF0004C3C + ((i)*0x40))
+
+// REG_UART_IRQ_ENABLE settings
+#define UART_IRQEN_RX           (1<<0)
+#define UART_IRQEN_TX           (1<<1)
+#define UART_IRQEN_RXERR        (1<<2)
+
+// REG_UART_IRQ_STATUS values
+#define UART_IRQST_NONE         1
+#define UART_IRQST_TX_READY     2
+#define UART_IRQST_RX           4
+#define UART_IRQST_RXERR        6
+#define UART_IRQST_UNK12        12
+
+// REG_UART_CNT1 settings
+#define UART_DATA_5BIT          (0<<0)
+#define UART_DATA_6BIT          (1<<0)
+#define UART_DATA_7BIT          (2<<0)
+#define UART_DATA_8BIT          (3<<0)
+#define UART_STOP_1BIT          (0<<2)
+#define UART_STOP_2BIT          (1<<2)
+#define UART_PARITY_NONE        (0<<3)
+#define UART_PARITY_ODD         (1<<3)
+#define UART_PARITY_EVEN        (3<<3)
+
+// REG_UART_STATUS defines
+#define UART_STAT_RX            (1<<0) // RX FIFO not empty
+#define UART_STAT_RX_OVF        (1<<1) // RX FIFO overflow
+#define UART_STAT_RX_LINE_ERR   (1<<4)
+#define UART_STAT_TX_READY      (1<<5)
+#define UART_STAT_TX_READY2     (1<<6)
+#define UART_STAT_RX_ERR        (1<<7)
+
+// REG_UART_CNT2 defines
+#define UART_ENABLE             (1<<0)
+#define UART_SWAP_BITS          (1<<1) // swap data bit order
+#define UART_INVERT_LINES       (1<<2) // TX/RX lines are active low
+
+// defines for FIFO registers
+#define UART_TRX_STATUS(r)      ((r) & 0xF)
+#define UART_TRX_FIFO_LVL(r)    (((r) >> 8) & 0x1F)
+
+
 // --- GPIO -------------------------------------------------------------------
 
 #define REG_GPIO_UNK2C          *(vu32*)0xF000502C
@@ -276,8 +347,8 @@
 #define REG_GPIO_UNKC8          *(vu32*)0xF00050C8
 #define REG_GPIO_UNKCC          *(vu32*)0xF00050CC
 #define REG_GPIO_UNKD0          *(vu32*)0xF00050D0
-#define REG_GPIO_UNKD4          *(vu32*)0xF00050D4
-#define REG_GPIO_UNKD8          *(vu32*)0xF00050D8
+#define REG_GPIO_UART1_TX       *(vu32*)0xF00050D4
+#define REG_GPIO_UART1_RX       *(vu32*)0xF00050D8
 #define REG_GPIO_UNKDC          *(vu32*)0xF00050DC
 #define REG_GPIO_UNKE0          *(vu32*)0xF00050E0
 #define REG_GPIO_UNKE4          *(vu32*)0xF00050E4
@@ -404,6 +475,47 @@
 #define MIC_IRQ_UNK4            (1<<4)
 #define MIC_IRQ_UNK8            (1<<8)
 #define MIC_IRQ_ALL             ((1<<0)|(1<<4)|(1<<8))
+
+
+// --- I2C --------------------------------------------------------------------
+
+#define REG_I2C_IRQ_STATUS      *(vu32*)0xF0005800
+#define REG_I2C_IRQ_ENABLE      *(vu32*)0xF0005804
+#define REG_I2C_IRQ_ACK         *(vu32*)0xF0005808
+
+#define REG_I2C_M_UNK00(i)      *(vu32*)(0xF0005800 + (i*0x400))
+#define REG_I2C_M_DATA(i)       *(vu32*)(0xF0005804 + (i*0x400))
+#define REG_I2C_M_CNT(i)        *(vu32*)(0xF0005808 + (i*0x400))
+#define REG_I2C_M_UNK10(i)      *(vu32*)(0xF0005810 + (i*0x400))
+#define REG_I2C_M_STAT1(i)      *(vu32*)(0xF0005818 + (i*0x400))
+#define REG_I2C_M_STAT2(i)      *(vu32*)(0xF0005820 + (i*0x400))
+
+#define REG_I2C_S_UNK00(i)      *(vu32*)(0xF0005900 + (i*0x400))
+#define REG_I2C_S_UNK04(i)      *(vu32*)(0xF0005904 + (i*0x400))
+#define REG_I2C_S_UNK08(i)      *(vu32*)(0xF0005908 + (i*0x400))
+#define REG_I2C_S_DATA0(i)      *(vu32*)(0xF0005938 + (i*0x400))
+#define REG_I2C_S_DATA1(i)      *(vu32*)(0xF000593C + (i*0x400))
+
+// REG_I2C_CNT defines
+#define I2C_CNT_STOP            (1<<0)
+#define I2C_CNT_START           (1<<1)
+#define I2C_CNT_ACK             (1<<2)
+#define I2C_CNT_DIR_RX          (0<<3)
+#define I2C_CNT_DIR_TX          (1<<3)
+#define I2C_CNT_TRX_ENABLE      (1<<4)
+#define I2C_CNT_REQ_RX          (1<<5)
+
+// REG_I2C_STAT1 defines
+#define I2C_STAT1_STOP          (1<<0)
+#define I2C_STAT1_START         (1<<1)
+#define I2C_STAT1_ACK           (1<<2)
+#define I2C_STAT1_DIR_RX        (0<<3)
+#define I2C_STAT1_DIR_TX        (1<<3)
+#define I2C_STAT1_TRX_PENDING   (1<<7)
+
+// REG_I2C_STAT2 defines
+#define I2C_STAT2_BUSY          (1<<6)
+#define I2C_STAT2_START         (1<<7)
 
 
 // --- Video ------------------------------------------------------------------
