@@ -55,6 +55,8 @@ int TftpSendData(sTftpContext* ctx, u16 blkid, const void* data, int len)
 
 int TftpSendError(sTftpContext* ctx, u16 code, const char* msg)
 {
+    if (code > 7) code = 0;
+
     int txlen = 4 + strlen(msg) + 1;
     u8 txdata[256] = {0};
     *(u16*)&txdata[0] = htons(5);

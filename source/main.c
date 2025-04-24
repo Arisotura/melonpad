@@ -471,7 +471,7 @@ void NwConnect()
     {
         Wifi_Disconnect();
         NwSetState(0);
-        WUP_DelayMS(1);
+        Thread_Sleep(5);
     }
 
     if (!nwHasSettings)

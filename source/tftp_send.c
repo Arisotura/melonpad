@@ -103,7 +103,7 @@ static void TftpSendThread(void* userdata)
         }
         if (ctx->Abort)
         {
-            close(ctx->Socket);
+            TftpHandleError(ctx, 1, 10, "Server cancelled operation");
             return;
         }
     }
@@ -142,27 +142,33 @@ static void TftpSendThread(void* userdata)
         }
     }
 
-    tv.tv_sec = 5;
-    tv.tv_usec = 0;
-    setsockopt(ctx->Socket, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-
     int pos = 0;
     u16 blkid = 1;
     int blklen = 512;
     for (;;)
     {
+        if (ctx->Abort)
+        {
+            TftpHandleError(ctx, 1, 10, "Server cancelled operation");
+            return;
+        }
+
         int thisblk = ctx->ReadCB(pos, txdata, blklen);
         if (thisblk < 0)
         {
-            TftpSendError(ctx, 0, "failed to read data");
-            if (ctx->ErrorCB) ctx->ErrorCB(0, "Failed to read data");
-            close(ctx->Socket);
+            TftpHandleError(ctx, 1, 0, "Failed to read data");
             return;
         }
 
         int good = 0;
         for (int retries = 0; retries < 5; retries++)
         {
+            if (ctx->Abort)
+            {
+                TftpHandleError(ctx, 1, 10, "Server cancelled operation");
+                return;
+            }
+
             if (TftpSendData(ctx, blkid, txdata, thisblk) < 1)
             {
                 TftpHandleError(ctx, 1, 0, "Communication failure");

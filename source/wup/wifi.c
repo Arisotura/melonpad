@@ -256,7 +256,7 @@ void Wifi_DeInit()
     if (State != State_Idle)
     {
         Wifi_Disconnect();
-        Thread_Sleep(100);
+        Thread_Sleep(5);
     }
 
     // TODO deinit lwIP??
@@ -572,7 +572,6 @@ static void RxThreadFunc(void* userdata)
     {
         u32 event;
         EventMask_Wait(RxEventMask, 3, NoTimeout, &event);
-        if (event == 3) printf("QUITTING BUT SHIT TO READ\n");
         if (event & 2) return;
         EventMask_Clear(RxEventMask, 1);
 
@@ -772,7 +771,7 @@ static void WifiThreadFunc(void* userdata)
         else if (State == State_GettingIP)
         {
             u32 time = now - JoinStartTimestamp;
-            if (time >= 10000)
+            if (time >= 30000)
             {
                 if (JoinCB) JoinCB(WIFI_JOIN_TIMEOUT);
                 JoinCB = NULL;

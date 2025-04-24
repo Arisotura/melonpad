@@ -10,7 +10,7 @@
 #include "loader.h"
 #include "sc_boot_menu.h"
 #include "sc_wifi_settings.h"
-#include "sc_dump_flash.h"
+#include "flash_read.h"
 #include "sc_hardware_info.h"
 
 sScreen scBootMenu =
@@ -60,6 +60,11 @@ static void OnOpenScreen(lv_event_t* event)
     ScOpen(screen, NULL, NULL);
 }
 
+static void OnOpenDumpFlash(lv_event_t* event)
+{
+    FlashReadStart(0, 32*1024*1024);
+}
+
 void ScBootMenu_Open(void* data)
 {
     Screen = lv_obj_create(NULL);
@@ -90,7 +95,7 @@ void ScBootMenu_Open(void* data)
     btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Wifi settings");
     lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scWifiSettings);
     btn = lv_list_add_button(list2, LV_SYMBOL_UPLOAD, "Dump FLASH");
-    lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scDumpFlash);
+    lv_obj_add_event_cb(btn, OnOpenDumpFlash, LV_EVENT_CLICKED, NULL);
     btn = lv_list_add_button(list2, LV_SYMBOL_LIST, "Hardware info");
     lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scHardwareInfo);
     btn = lv_list_add_button(list2, LV_SYMBOL_PLUS, "About");
