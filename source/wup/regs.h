@@ -64,6 +64,11 @@
 #define RESET_VIDEO             (1<<21)
 
 
+// --- Device ID --------------------------------------------------------------
+
+#define REG_DEVICE_ID(i)        *(vu32*)(0xF0000100 + ((i)<<2))
+
+
 // --- IRQ --------------------------------------------------------------------
 
 #define REG_IRQ_ENABLEMASK0     *(vu32*)0xF0001200
@@ -318,18 +323,18 @@
 #define REG_GPIO_AUDIO_BCLK     *(vu32*)0xF0005040
 #define REG_GPIO_AUDIO_MIC      *(vu32*)0xF0005044
 #define REG_GPIO_UNK48          *(vu32*)0xF0005048
-#define REG_GPIO_UNK4C          *(vu32*)0xF000504C
-#define REG_GPIO_UNK50          *(vu32*)0xF0005050
-#define REG_GPIO_UNK54          *(vu32*)0xF0005054
-#define REG_GPIO_UNK58          *(vu32*)0xF0005058
-#define REG_GPIO_UNK5C          *(vu32*)0xF000505C
-#define REG_GPIO_UNK60          *(vu32*)0xF0005060
-#define REG_GPIO_UNK64          *(vu32*)0xF0005064
-#define REG_GPIO_UNK68          *(vu32*)0xF0005068
-#define REG_GPIO_UNK6C          *(vu32*)0xF000506C
-#define REG_GPIO_UNK70          *(vu32*)0xF0005070
-#define REG_GPIO_UNK74          *(vu32*)0xF0005074
-#define REG_GPIO_UNK78          *(vu32*)0xF0005078
+#define REG_GPIO_CAM_DATA2      *(vu32*)0xF000504C
+#define REG_GPIO_CAM_DATA3      *(vu32*)0xF0005050
+#define REG_GPIO_CAM_DATA4      *(vu32*)0xF0005054
+#define REG_GPIO_CAM_DATA5      *(vu32*)0xF0005058
+#define REG_GPIO_CAM_DATA6      *(vu32*)0xF000505C
+#define REG_GPIO_CAM_DATA7      *(vu32*)0xF0005060
+#define REG_GPIO_CAM_DATA8      *(vu32*)0xF0005064
+#define REG_GPIO_CAM_DATA9      *(vu32*)0xF0005068
+#define REG_GPIO_CAM_HREF       *(vu32*)0xF000506C
+#define REG_GPIO_CAM_VSYNC      *(vu32*)0xF0005070
+#define REG_GPIO_CAM_XVCLK1     *(vu32*)0xF0005074
+#define REG_GPIO_CAM_PCLK       *(vu32*)0xF0005078
 #define REG_GPIO_UNK80          *(vu32*)0xF0005080
 #define REG_GPIO_UNK84          *(vu32*)0xF0005084
 #define REG_GPIO_UNK88          *(vu32*)0xF0005088
@@ -351,10 +356,10 @@
 #define REG_GPIO_UNKD0          *(vu32*)0xF00050D0
 #define REG_GPIO_UART1_TX       *(vu32*)0xF00050D4
 #define REG_GPIO_UART1_RX       *(vu32*)0xF00050D8
-#define REG_GPIO_UNKDC          *(vu32*)0xF00050DC
-#define REG_GPIO_UNKE0          *(vu32*)0xF00050E0
-#define REG_GPIO_UNKE4          *(vu32*)0xF00050E4
-#define REG_GPIO_UNKE8          *(vu32*)0xF00050E8
+#define REG_GPIO_UART2_TX       *(vu32*)0xF00050DC
+#define REG_GPIO_UART2_LED      *(vu32*)0xF00050E0
+#define REG_GPIO_UART2_RX       *(vu32*)0xF00050E4
+#define REG_GPIO_UART2_PWDN     *(vu32*)0xF00050E8
 #define REG_GPIO_SPI_CLOCK      *(vu32*)0xF00050EC
 #define REG_GPIO_SPI_MISO       *(vu32*)0xF00050F0
 #define REG_GPIO_SPI_MOSI       *(vu32*)0xF00050F4
@@ -367,7 +372,7 @@
 #define REG_GPIO_UNK110         *(vu32*)0xF0005110 // NFC related
 #define REG_GPIO_RUMBLE         *(vu32*)0xF0005114
 #define REG_GPIO_SENSOR_BAR     *(vu32*)0xF0005118
-#define REG_GPIO_CAMERA         *(vu32*)0xF000511C
+#define REG_GPIO_CAM_RESET      *(vu32*)0xF000511C
 
 // REG_GPIO_xxxx defines
 // not all registers seem to have all these bits

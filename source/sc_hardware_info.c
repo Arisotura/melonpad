@@ -52,7 +52,7 @@ void ScHardwareInfo_Open(void* data)
     lv_table_set_row_count(table, 6);
     lv_table_set_column_count(table, 2);
     lv_table_set_column_width(table, 0, 200);
-    lv_table_set_column_width(table, 1, 400);
+    lv_table_set_column_width(table, 1, 450);
     lv_obj_set_height(table, lv_pct(100));
     lv_obj_remove_style(table, NULL, LV_PART_ITEMS | LV_STATE_PRESSED);
 
@@ -95,6 +95,8 @@ void ScHardwareInfo_Open(void* data)
     if (region > 6)
         region = 7;
 
+    vu8* devid = (vu8*)&REG_DEVICE_ID(0);
+
     u8 mac[6];
     Wifi_GetMACAddr(mac);
 
@@ -122,14 +124,21 @@ void ScHardwareInfo_Open(void* data)
     lv_table_set_cell_value(table, r, 1, str);
 
     r++;
+    sprintf(str, "%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X:%02X",
+            devid[0], devid[1], devid[2], devid[3], devid[4], devid[5], devid[6], devid[7],
+            devid[8], devid[9], devid[10], devid[11], devid[12], devid[13], devid[14], devid[15]);
+    lv_table_set_cell_value(table, r, 0, "Device ID:");
+    lv_table_set_cell_value(table, r, 1, str);
+
+    r++;
     sprintf(str, "%02X:%02X:%02X:%02X:%02X:%02X",
             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     lv_table_set_cell_value(table, r, 0, "MAC address:");
     lv_table_set_cell_value(table, r, 1, str);
 
     r++;
-    sprintf(str, "%d.%d.%d.%d",
-            uic_ver>>24, (uic_ver>>16)&0xFF, (uic_ver>>8)&0xFF, uic_ver&0xFF);
+    sprintf(str, "%d.%d.%d",
+            uic_ver>>24, (uic_ver>>16)&0xFF, uic_ver&0xFFFF);
     lv_table_set_cell_value(table, r, 0, "UIC firmware:");
     lv_table_set_cell_value(table, r, 1, str);
 
