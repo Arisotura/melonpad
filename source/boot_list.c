@@ -5,6 +5,7 @@
 u8 FlashMap[32];
 sBootEntry* FlashBootMap[32];
 sBootEntry BootList[32];
+u8 StockFwSlot;
 
 
 sBootEntry* FillBootEntry(sBootEntry* entry, u32 offset)
@@ -73,8 +74,8 @@ sBootEntry* FillBootEntry(sBootEntry* entry, u32 offset)
     {
         for (u32 i = 1; i < nslots; i++)
         {
-            FlashMap[i] = Map_TakenCont;
-            FlashBootMap[i] = entry;
+            FlashMap[slot+i] = Map_TakenCont;
+            FlashBootMap[slot+i] = entry;
         }
     }
 
@@ -126,6 +127,7 @@ void BuildBootList()
     // for stock firmware, mark the other partition as reserved
     u32 fwslot = stockpart >> 20;
     u32 fwother = (stocksel == 1) ? 0x01 : 0x05;
+    StockFwSlot = fwslot;
     for (int i = 0; i < 4; i++)
         FlashMap[fwother+i] = FlashMap[fwslot+i];
 

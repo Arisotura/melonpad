@@ -21,6 +21,7 @@ typedef struct sBootEntry
 extern u8 FlashMap[32];
 extern sBootEntry* FlashBootMap[32];
 extern sBootEntry BootList[32];
+extern u8 StockFwSlot;
 
 void BuildBootList();
 

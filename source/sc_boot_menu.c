@@ -9,6 +9,7 @@
 #include "boot_list.h"
 #include "loader.h"
 #include "sc_boot_menu.h"
+#include "sc_manage_apps.h"
 #include "sc_wifi_settings.h"
 #include "flash_read.h"
 #include "sc_hardware_info.h"
@@ -88,7 +89,8 @@ void ScBootMenu_Open(void* data)
     lv_obj_align(list2, LV_ALIGN_TOP_RIGHT, 0, 0);
 
     lv_list_add_text(list2, "App management");
-    btn = lv_list_add_button(list2, LV_SYMBOL_DOWNLOAD, "Install app");
+    btn = lv_list_add_button(list2, LV_SYMBOL_DRIVE, "Manage apps");
+    lv_obj_add_event_cb(btn, OnOpenScreen, LV_EVENT_CLICKED, &scManageApps);
     btn = lv_list_add_button(list2, LV_SYMBOL_WIFI, "Wifi boot");
     lv_list_add_text(list2, "Settings");
     btn = lv_list_add_button(list2, LV_SYMBOL_SETTINGS, "Boot settings");
