@@ -14,6 +14,12 @@ void Flash_Set4ByteAddr(int val);
 
 void Flash_Read(u32 addr, void* data, int len);
 
+void Flash_EraseSector(u32 addr); // erase 64K sector
+void Flash_EraseSubsector(u32 addr); // erase 4K subsector
+
+void Flash_PageProgram(u32 addr, void* data, int len); // program 1-256 bytes of data
+void Flash_Write(u32 addr, void* data, int len); // write any amount of data (on erased sectors)
+
 int Flash_GetEntryInfo(char* tag, u32* offset, u32* length, u32* version);
 
 #endif // _FLASH_H_
