@@ -168,7 +168,7 @@ fwpack:
 #---------------------------------------------------------------------------------
 clean:
 	@echo clean ...
-	@rm loader_flash.bin
+	@rm -f loader_flash.bin
 	@rm -fr $(BUILD) $(TARGET).elf $(TARGET).bin
 
 
